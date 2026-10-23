@@ -1,3 +1,7 @@
+import { createDemoAntigravityLauncher } from './antigravity/http';
+import {ManagedAntigravity} from './antigravity/managed';
+import {createAntigravityLauncher} from './antigravity/cli';
+import {createGeminiHttp} from './antigravity/http';
 import { AntigravitySource, hubOrigin } from './sources/antigravity';
 import { ManagedCodex } from './codex/managed';
 import { nativeRoutes } from './codex/native-http';
@@ -274,6 +278,32 @@ const dictation = config.messages
 const nativeCodex = config.terminal && config.messages && !config.inDocker && codexBin && process.env.HABBLAUD_NATIVE_CODEX === '1'
   ? new ManagedCodex(codexBin, join(config.home, 'projetos', 'qa-agents'), join(config.dataDir, 'native-codex.json')) : undefined;
 const nativeApi = nativeCodex ? nativeRoutes(nativeCodex, () => office.list().filter(a => a.provider === 'codex'), () => antigravity?.status()) : undefined;
+// Gemini: demonstração isolada por padrão; CLI real exige flag própria.
+// Caso ambas estejam definidas, o simulador tem prioridade.
+const geminiDemoEnabled =
+  process.env.HABBLAUD_NATIVE_GEMINI_DEMO === '1';
+
+const geminiRealEnabled =
+  process.env.HABBLAUD_NATIVE_GEMINI_REAL === '1';
+
+const geminiManager =
+  config.terminal &&
+  !config.inDocker &&
+  !config.remote &&
+  (geminiDemoEnabled || geminiRealEnabled)
+    ? new ManagedAntigravity({
+        workspace: join(config.home, 'projetos', 'qa-agents'),
+        storeFile: join(config.dataDir, 'gemini-conversations.json'),
+        launch: geminiDemoEnabled
+          ? createDemoAntigravityLauncher()
+          : createAntigravityLauncher(
+              process.env.HABBLAUD_AGY_BIN ||
+              join(config.home, '.local', 'bin', 'agy')
+            ),
+      })
+    : undefined;
+
+const geminiHttp = geminiManager ? createGeminiHttp(geminiManager, geminiDemoEnabled ? 'demo' : 'real') : undefined;
 const queueCodex = codexBin ? createCodexQueueRunner(codexBin) : undefined;
 const messages = config.messages
   ? new MessageRegistry({
@@ -423,10 +453,11 @@ if (config.dev) {
 // Host/Origin/Content-Type: barra DNS rebinding e CSRF antes de qualquer rota (inclusive o Vite).
 const guard = createRequestGuard({ allowedHosts: config.allowedHosts });
 
-server.on('request', (req, res) => {
+server.on('request', async (req, res) => {
   const url = parseUrl(req);
   try {
     if (guard(req, res)) return;
+    if (await geminiHttp?.(req, res)) return;
     if (nativeApi?.(req, res, url)) return;
     if (!api(req, res, url)) fallback(req, res, url);
   } catch (err) {
@@ -462,7 +493,8 @@ if (config.remote) {
       try {
         if (guard(req, res)) return;
         if (gate(req, res, url)) return;
-        if (nativeApi?.(req, res, url)) return;
+
+    if (nativeApi?.(req, res, url)) return;
     if (!api(req, res, url)) fallback(req, res, url);
       } catch (err) {
         log.warn(tr('Erro ao responder (remoto) {0} {1}: {2}', [req.method, url.pathname, errMsg(err)]));

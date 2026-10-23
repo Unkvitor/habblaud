@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { realpathSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
+import {dirname} from 'node:path';
+import {maskSecrets} from '../../shared/activity';
 import { relative, resolve, sep } from 'node:path';
 
 export type AntigravitySessionStatus =
@@ -24,6 +26,7 @@ export type AntigravitySession = {
   cwd: string;
   status: AntigravitySessionStatus;
   createdAt: number;
+  nativeId?: string; model?: string; permissionMode?: string; usage?: Record<string,number>; error?: string;
 };
 
 export type AntigravityEvent = {
@@ -38,14 +41,16 @@ export type AntigravityEvent = {
 export type AntigravityLauncher = (
   session: AntigravitySession,
   text: string,
-  onChunk?: (chunk: string) => void
-) => Promise<void> | void;
+  onChunk?: (chunk: string) => void,
+  onMeta?: (meta: Partial<AntigravitySession> & {progress?: unknown}) => void
+) => Promise<void | {nativeId?:string; text:string; usage?:Record<string,number>}> | void;
 
 export type ManagedAntigravityOptions = {
   workspace: string;
   launch?: AntigravityLauncher;
   maxSessions?: number;
   maxMessages?: number;
+  storeFile?: string;
 };
 
 const MAX_INPUT = 32000;
@@ -88,6 +93,7 @@ export class ManagedAntigravity extends EventEmitter {
   private readonly launch?: AntigravityLauncher;
   private readonly maxSessions: number;
   private readonly maxMessages: number;
+  private readonly storeFile?: string;
 
   constructor(options: ManagedAntigravityOptions) {
     super();
@@ -97,6 +103,7 @@ export class ManagedAntigravity extends EventEmitter {
     }
 
     this.workspace = resolve(options.workspace);
+    this.storeFile = options.storeFile;
     this.launch = options.launch;
     this.maxSessions = validLimit(
       options.maxSessions ?? 20,
@@ -106,9 +113,24 @@ export class ManagedAntigravity extends EventEmitter {
       options.maxMessages ?? 200,
       'Limite de mensagens'
     );
+    if(this.storeFile){
+      try{
+        const saved=JSON.parse(readFileSync(this.storeFile,'utf8'));
+        for(const entry of saved.sessions){
+          const s=entry.session as AntigravitySession;
+          if(!/^[a-f0-9-]{36}$/i.test(s.id) || !insideWorkspace(realpathSync(s.cwd),realpathSync(this.workspace)))throw new Error('Estado Gemini inválido.');
+          if(s.status==='working'){s.status='error';s.error='Servidor reiniciado durante execução; confira a conversa antes de repetir.';}
+          this.sessions.set(s.id,s);this.histories.set(s.id,entry.messages);
+        }
+      }catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}
+    }
   }
-
   private publish(event: AntigravityEvent): void {
+    if(this.storeFile){
+      mkdirSync(dirname(this.storeFile),{recursive:true});
+      const data={sessions:[...this.sessions.values()].map(session=>({session,messages:this.histories.get(session.id)||[]}))};
+      writeFileSync(this.storeFile+'.tmp',JSON.stringify(data),{mode:0o600});renameSync(this.storeFile+'.tmp',this.storeFile);
+    }
     this.emit('update', event);
   }
 
@@ -281,7 +303,7 @@ export class ManagedAntigravity extends EventEmitter {
         );
       }
 
-      answer.text += chunk;
+      answer.text = maskSecrets(answer.text + chunk);
 
       this.publish({
         method: 'message/delta',
@@ -292,11 +314,24 @@ export class ManagedAntigravity extends EventEmitter {
     };
 
     try {
-      await this.launch(
+      const result = await this.launch(
         { ...session },
         text,
-        onChunk
+        onChunk,
+        meta => {
+          if(meta.nativeId)session.nativeId=meta.nativeId;
+          if(meta.model)session.model=meta.model;
+          if(meta.permissionMode)session.permissionMode=meta.permissionMode;
+          if(meta.usage)session.usage=meta.usage;
+          this.publish({method:'session/progress',sessionId});
+        }
       );
+      if(result){
+        if(result.nativeId)session.nativeId=result.nativeId;
+        if(result.usage)session.usage=result.usage;
+        if(!answer)answer=this.addMessage(sessionId,'assistant','',false);
+        answer.text=maskSecrets(result.text);
+      }
 
       active = false;
 
@@ -317,11 +352,12 @@ export class ManagedAntigravity extends EventEmitter {
         sessionId,
         status: 'idle',
       });
-    } catch {
+    } catch (error) {
       active = false;
 
       // Uma resposta interrompida continua marcada como incompleta.
       session.status = 'error';
+      session.error = maskSecrets(error instanceof Error ? error.message : 'Erro no Antigravity.');
 
       this.publish({
         method: 'session/error',
@@ -349,6 +385,7 @@ export class ManagedAntigravity extends EventEmitter {
     }
 
     session.status = 'idle';
+    delete session.error;
 
     this.publish({
       method: 'session/recovered',

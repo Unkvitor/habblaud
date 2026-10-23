@@ -1,331 +1,129 @@
-import { geminiDemoReply, geminiDemoChunks } from './gemini-preview-model';
+import {h} from './dom';
+import {tr} from '../../../shared/i18n';
+type Session={id:string;nativeId?:string;cwd:string;status:string;model?:string;error?:string;usage?:Record<string,number>};
 
-type Message = {
-  role: 'user' | 'assistant';
-  text: string;
-};
+async function checkGeminiMode(root: HTMLElement): Promise<void> {
+  const notice = document.createElement('p');
+  notice.className = 'gemini-server-mode';
+  notice.setAttribute('role', 'status');
+  notice.style.cssText =
+    'padding:9px 12px;border:1px solid rgba(128,128,128,.35);' +
+    'border-radius:9px;margin:8px 0;font-size:.85rem';
 
-type Session = {
-  id: string;
-  name: string;
-  messages: Message[];
-  busy: boolean;
-};
+  notice.textContent = 'Verificando modo Gemini...';
+  root.prepend(notice);
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className = '',
-  text = ''
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  node.className = className;
-  node.textContent = text;
-  return node;
+  try {
+    const response = await fetch('/api/native-gemini/mode', {
+      cache: 'no-store'
+    });
+
+    if (!response.ok) throw new Error('API indisponível');
+
+    const info = await response.json();
+
+    if (
+      info.mode === 'demo' &&
+      info.simulated === true &&
+      info.consumesTokens === false
+    ) {
+      notice.textContent =
+        'DEMONSTRAÇÃO · Respostas locais · 0 tokens de IA';
+      notice.dataset.mode = 'demo';
+
+      // Corrige o aviso legado somente quando o servidor
+      // confirma que a execução está em modo simulado.
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT
+      );
+
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const value = node.textContent ?? '';
+
+        if (value.includes('Execução real somente ao enviar')) {
+          node.textContent = value
+            .replace(
+              /Execução real somente ao enviar\./g,
+              'Execução simulada pelo servidor.'
+            )
+            .replace(
+              /Cada envio consome cota\./g,
+              'Nenhum token de IA é consumido.'
+            );
+        }
+      }
+    } else if (
+      info.mode === 'real' &&
+      info.simulated === false &&
+      info.consumesTokens === true
+    ) {
+      notice.textContent =
+        'CLI REAL · As mensagens podem consumir tokens de IA';
+      notice.dataset.mode = 'real';
+    } else {
+      throw new Error('Modo inconsistente');
+    }
+  } catch {
+    notice.textContent = 'Modo Gemini não confirmado.';
+    notice.dataset.mode = 'unavailable';
+  }
 }
 
-export function mountGeminiPreview(root: HTMLElement): void {
-  const sessions: Session[] = [];
-  let selected = '';
-  let sequence = 0;
-
-  const style = el('style');
-  style.textContent = `
-    .gemini-ui {
-      display: grid;
-      gap: 14px;
-      padding: 14px 0;
-      min-width: 0;
-      color: inherit;
-    }
-    .gemini-ui__header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    .gemini-ui__heading {
-      display: grid;
-      gap: 4px;
-    }
-    .gemini-ui__heading strong {
-      font-size: 1.08rem;
-    }
-    .gemini-ui__muted {
-      font-size: .82rem;
-      opacity: .72;
-    }
-    .gemini-ui__badge {
-      font-size: .75rem;
-      padding: 5px 10px;
-      border-radius: 999px;
-      border: 1px solid currentColor;
-      opacity: .78;
-    }
-    .gemini-ui__toolbar {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .gemini-ui__select {
-      flex: 1 1 160px;
-      min-width: 0;
-      padding: 10px;
-      border: 1px solid rgba(128,128,128,.5);
-      border-radius: 9px;
-      background: transparent;
-      color: inherit;
-    }
-    .gemini-ui__history {
-      height: min(45vh, 400px);
-      min-height: 220px;
-      overflow-y: auto;
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      border: 1px solid rgba(128,128,128,.3);
-      border-radius: 12px;
-    }
-    .gemini-ui__message {
-      max-width: 90%;
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(128,128,128,.25);
-      overflow-wrap: anywhere;
-    }
-    .gemini-ui__message--user {
-      align-self: flex-end;
-      background: rgba(80,120,210,.16);
-    }
-    .gemini-ui__message--assistant {
-      align-self: flex-start;
-      background: rgba(128,128,128,.1);
-    }
-    .gemini-ui__message strong {
-      display: block;
-      margin-bottom: 7px;
-      font-size: .8rem;
-    }
-    .gemini-ui__message pre {
-      margin: 0;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      font: inherit;
-      line-height: 1.5;
-    }
-    .gemini-ui__form {
-      display: flex;
-      gap: 9px;
-    }
-    .gemini-ui__input {
-      flex: 1;
-      min-width: 0;
-      resize: vertical;
-      border: 1px solid rgba(128,128,128,.5);
-      border-radius: 9px;
-      background: transparent;
-      color: inherit;
-      padding: 11px;
-      font: inherit;
-    }
-    @media(max-width:540px) {
-      .gemini-ui__form { flex-direction: column; }
-      .gemini-ui__history { min-height: 180px; }
-      .gemini-ui__message { max-width: 96%; }
-    }
-  `;
-
-  const container = el('section', 'gemini-ui');
-  container.setAttribute('aria-label', 'Conversa Gemini');
-
-  const heading = el('div', 'gemini-ui__heading');
-  heading.append(
-    el('strong', '', 'Gemini · Antigravity'),
-    el('span', 'gemini-ui__muted', 'Conversa e streaming de mensagens')
-  );
-
-  const header = el('div', 'gemini-ui__header');
-  header.append(
-    heading,
-    el('span', 'gemini-ui__badge', 'Demonstração · 0 tokens')
-  );
-
-  const toolbar = el('div', 'gemini-ui__toolbar');
-  const selector = el('select', 'gemini-ui__select');
-  selector.setAttribute('aria-label', 'Sessão Gemini');
-
-  const create = el('button', 'ui-btn', '+ Nova sessão');
-  create.type = 'button';
-
-  const clear = el('button', 'ui-btn', 'Limpar');
-  clear.type = 'button';
-
-  toolbar.append(selector, create, clear);
-
-  const history = el('div', 'gemini-ui__history');
-  history.setAttribute('role', 'log');
-  history.setAttribute('aria-label', 'Histórico Gemini');
-
-  const status = el('p', 'gemini-ui__muted');
-  status.setAttribute('role', 'status');
-  status.setAttribute('aria-live', 'polite');
-
-  const form = el('form', 'gemini-ui__form');
-  const input = el('textarea', 'gemini-ui__input');
-  input.rows = 3;
-  input.maxLength = 2000;
-  input.placeholder = 'Escreva uma mensagem...';
-  input.setAttribute('aria-label', 'Mensagem ao Gemini');
-
-  const send = el('button', 'ui-btn ui-btn--primary', 'Enviar');
-  send.type = 'submit';
-
-  form.append(input, send);
-
-  container.append(
-    style, header, toolbar, history, status, form,
-    el(
-      'p',
-      'gemini-ui__muted',
-      'Modo simulado: sem acesso ao CLI, ferramentas ou modelos externos.'
-    )
-  );
-
-  root.append(container);
-
-  const current = () => sessions.find(s => s.id === selected);
-
-  const render = () => {
-    selector.replaceChildren();
-
-    for (const session of sessions) {
-      const option = el('option');
-      option.value = session.id;
-      option.textContent =
-        session.name + (session.busy ? ' · Respondendo' : '');
-      selector.append(option);
-    }
-
-    selector.value = selected;
-
-    const session = current();
-    const busy = session?.busy ?? false;
-
-    send.disabled = busy;
-    input.disabled = busy;
-    clear.disabled = busy;
-
-    status.textContent = busy
-      ? 'Gemini simulado está respondendo...'
-      : 'Pronto · Sem consumo de tokens';
-
-    history.replaceChildren();
-
-    if (!session?.messages.length) {
-      history.append(
-        el('p', 'gemini-ui__muted', 'Conversa vazia. Envie uma mensagem.')
-      );
-      return;
-    }
-
-    for (const message of session.messages) {
-      const card = el(
-        'article',
-        'gemini-ui__message gemini-ui__message--' + message.role
-      );
-
-      card.append(
-        el('strong', '', message.role === 'user' ? 'Você' : 'Gemini · Simulado'),
-        el('pre', '', message.text || 'Gerando resposta...')
-      );
-
-      history.append(card);
-    }
-
-    history.scrollTop = history.scrollHeight;
-  };
-
-  const newSession = () => {
-    sequence++;
-
-    const session: Session = {
-      id: `gemini-demo-${sequence}`,
-      name: `Conversa ${sequence}`,
-      messages: [],
-      busy: false,
-    };
-
-    sessions.push(session);
-    selected = session.id;
-    input.value = '';
-    render();
-  };
-
-  create.onclick = () => {
-    newSession();
-    input.focus();
-  };
-
-  selector.onchange = () => {
-    selected = selector.value;
-    render();
-  };
-
-  clear.onclick = () => {
-    const session = current();
-
-    if (!session || session.busy) return;
-
-    session.messages = [];
-    render();
-  };
-
-  form.onsubmit = event => {
-    event.preventDefault();
-
-    const session = current();
-    const text = input.value.trim();
-
-    if (!session || session.busy || !text) return;
-
-    session.messages.push({ role: 'user', text });
-
-    const answer: Message = {
-      role: 'assistant',
-      text: '',
-    };
-
-    session.messages.push(answer);
-    session.busy = true;
-
-    input.value = '';
-
-    const chunks = geminiDemoChunks(geminiDemoReply(text), 12);
-    let index = 0;
-
-    render();
-
-    const timer = setInterval(() => {
-      if (index < chunks.length) {
-        answer.text += chunks[index++];
-      }
-
-      if (index >= chunks.length) {
-        clearInterval(timer);
-        session.busy = false;
-      }
-
-      render();
-    }, 40);
-  };
-
-  input.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      form.requestSubmit();
-    }
-  });
-
-  newSession();
+export function mountGeminiPreview(root:HTMLElement):void{
+  void checkGeminiMode(root);
+ const select=h('select',{attrs:{'aria-label':tr('Sessão Gemini')}});
+ const cwd=h('input',{attrs:{'aria-label':tr('Workspace Gemini'),placeholder:tr('Subdiretório opcional do workspace')}});
+ const create=h('button',{class:'ui-btn',text:tr('Preparar conversa Gemini')});
+ const recover=h('button',{class:'ui-btn',text:tr('Liberar após conferir erro'),hidden:true});
+ const status=h('p',{attrs:{role:'status','aria-live':'polite'}});
+ const history=h('div',{class:'native-history',attrs:{'aria-label':tr('Histórico Gemini')}});
+ const input=h('textarea',{attrs:{'aria-label':tr('Mensagem ao Gemini'),rows:3,maxlength:32000}});
+ const send=h('button',{class:'ui-btn ui-btn--primary',type:'submit',text:tr('Enviar ao Gemini')});
+ const form=h('form',{},input,send);
+ const box=h('section',{attrs:{'aria-label':tr('Conversa Gemini')},style:'display:flex;flex-direction:column;gap:10px;min-height:280px;height:100%;overflow:auto'},
+ h('strong',{text:'Gemini · Antigravity CLI'}),h('p',{text:tr('Execução real somente ao enviar. Modelo gemini-4-argon-medium; modo plano e sandbox. Cada envio consome cota.')}),
+ h('div',{class:'native-toolbar'},select,cwd,create),status,recover,history,form,
+ h('p',{class:'native-hint',text:tr('O protocolo headless não recebe decisões de aprovação. Operações que exigem confirmação podem ser recusadas pelo CLI. Use o terminal original para autorizações; nenhuma permissão automática é habilitada.')}));
+ root.replaceChildren(box);
+ let selected=localStorage.getItem('habblaud-gemini-session')||'';let sessions:Session[]=[];let sending=false;let generation=0;
+ const api=async(path:string,body?:unknown)=>{
+  const response=await fetch('/api/native-gemini'+path,body===undefined?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json','X-Habblaud-Client':'gemini-preview'},body:JSON.stringify(body)});
+  const data=await response.json();if(!response.ok)throw new Error(data.error||tr('Antigravity indisponível.'));return data;
+ };
+ const error=(e:unknown)=>{status.textContent=e instanceof Error?e.message:tr('Erro Gemini.');};
+ const refresh=async()=>{
+  const version=++generation;const list=await api('/sessions');if(version!==generation)return;sessions=list.data;
+  select.replaceChildren(...sessions.map(s=>h('option',{text:`${s.nativeId?.slice(0,8)||tr('Conversa preparada')} · ${s.status}`,attrs:{value:s.id}})));
+  if(!sessions.some(s=>s.id===selected))selected=sessions[0]?.id||'';select.value=selected;localStorage.setItem('habblaud-gemini-session',selected);
+  const s=sessions.find(s=>s.id===selected);send.disabled=!s||s.status!=='idle'||sending;input.disabled=send.disabled;
+  recover.hidden=s?.status!=='error';
+  status.textContent=s?`${s.model||'gemini-4-argon-medium'} · ${s.status}${s.error?' · '+s.error:''}${s.usage?' · '+tr('Tokens nativos: {0}',[s.usage.total_tokens??0]):''}`:tr('Prepare uma conversa; nenhum modelo será iniciado antes do envio.');
+  if(!s){history.replaceChildren();return;}
+  const page=await api('/history?id='+encodeURIComponent(s.id));if(version!==generation)return;
+  history.replaceChildren(...page.data.map((m:any)=>h('article',{class:'native-item',attrs:{'data-gemini-message':m.id}},h('strong',{text:m.role==='user'?tr('Você'):'Gemini'}),h('pre',{text:m.text+(m.complete?'':tr(' [resposta incompleta]'))}))));
+  history.scrollTop=history.scrollHeight;
+ };
+ select.onchange=()=>{selected=select.value;void refresh().catch(error);};
+ create.onclick=()=>{create.disabled=true;void api('/create',cwd.value.trim()?{cwd:cwd.value.trim()}:{}).then(s=>{selected=s.id;return refresh();}).catch(error).finally(()=>{create.disabled=false;});};
+ recover.onclick=()=>{void api('/recover',{id:selected}).then(refresh).catch(error);};
+ form.onsubmit=e=>{
+  e.preventDefault();if(sending||!selected||!input.value.trim())return;
+  sending=true;send.disabled=true;const text=input.value;input.value='';
+  void api('/send',{id:selected,text}).then(refresh).catch(error).finally(()=>{sending=false;void refresh().catch(error);});
+ };
+ const events=new EventSource('/api/native-gemini/events');let timer:ReturnType<typeof setTimeout>|undefined;
+ events.onmessage=e=>{
+  const event=JSON.parse(e.data);
+  if(event.method==='message/delta' && event.sessionId===selected && event.message){
+   const node=history.querySelector(`[data-gemini-message="${event.message.id}"] pre`);
+   if(node)node.textContent=event.message.text;
+   else history.append(h('article',{class:'native-item',attrs:{'data-gemini-message':event.message.id}},h('strong',{text:'Gemini'}),h('pre',{text:event.message.text})));
+  }else if(event.method!=='session/progress'){
+   if(timer)clearTimeout(timer);timer=setTimeout(()=>{void refresh().catch(error);},60);
+  }
+ };
+ events.onerror=()=>{status.textContent=tr('Reconectando Gemini; mensagens não serão reenviadas.');};
+ void refresh().catch(error);
 }

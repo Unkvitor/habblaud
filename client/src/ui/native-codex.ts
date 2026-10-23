@@ -1,4 +1,5 @@
 import { h } from './dom';
+import { installGeminiAgentShortcut } from './gemini-agent-shortcut';
 import { mountGeminiPreview } from './gemini-preview';
 import { tr } from '../../../shared/i18n';
 
@@ -78,6 +79,17 @@ export async function mountNativeCodex(root: HTMLElement): Promise<void> {
   tabs.append(codexTab, geminiTab);
   panel.append(header, tabs, codexArea, geminiArea);
   root.append(toggle, panel);
+
+  // O perfil do personagem Gemini abre diretamente o chat Gemini.
+  // Não interfere no comportamento das sessões Codex.
+  installGeminiAgentShortcut(() => {
+    if (panel.hidden) {
+      toggle.click();
+    }
+
+    geminiTab.click();
+  });
+
   let threads: Thread[] = [], selected = '', items: Item[] = [], cursor: string | null = null, threadCursor: string | null = null;
   let source: EventSource | undefined, polling: ReturnType<typeof setInterval> | undefined;
   let sending = false;
