@@ -5,7 +5,7 @@ import {maskSecrets} from '../../shared/activity';
 export const GEMINI_MODEL='gemini-4-argon-medium';
 export function cliArgs(nativeId?: string): string[]{
  if(nativeId && !/^[a-f0-9-]{36}$/i.test(nativeId))throw new Error('ID nativo Antigravity inválido.');
- return ['--input-format','stream-json','--output-format','stream-json','--model',GEMINI_MODEL,'--effort','low','--mode','plan','--sandbox','--disable-slash-commands',...(nativeId?['--conversation',nativeId]:[])];
+ return ['--input-format','stream-json','--output-format','stream-json','--model',GEMINI_MODEL,'--mode','plan','--sandbox','--disable-slash-commands',...(nativeId?['--conversation',nativeId]:[])];
 }
 export class CliReply{
  nativeId='';text='';done=false;usage:Record<string,number>={};

@@ -293,7 +293,12 @@ const geminiManager =
   (geminiDemoEnabled || geminiRealEnabled)
     ? new ManagedAntigravity({
         workspace: join(config.home, 'projetos', 'qa-agents'),
-        storeFile: join(config.dataDir, 'gemini-conversations.json'),
+        storeFile: join(
+          config.dataDir,
+          geminiDemoEnabled
+            ? 'gemini-conversations.json'
+            : 'gemini-conversations-real.json'
+        ),
         launch: geminiDemoEnabled
           ? createDemoAntigravityLauncher()
           : createAntigravityLauncher(

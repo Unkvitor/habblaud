@@ -15,3 +15,13 @@ it('requires a native successful result, not just stdout or exit zero',()=>{
  const r=new CliReply();expect(()=>r.finish()).toThrow();
  expect(()=>r.accept({event:'result',result:{status:'ERROR',error:'quota exhausted'}})).toThrow('quota exhausted');
 });
+
+it('não combina modelo Gemini com esforço incompatível', () => {
+  const args = cliArgs();
+  expect(args).toContain('--model');
+  expect(args).toContain('gemini-4-argon-medium');
+  expect(args).not.toContain('--effort');
+  expect(args).toContain('--mode');
+  expect(args).toContain('plan');
+  expect(args).toContain('--sandbox');
+});
