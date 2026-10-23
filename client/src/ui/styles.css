@@ -11147,3 +11147,24 @@ html.is-replay #world {
 .ui-world-chip__visitors[hidden] {
   display: none;
 }
+
+/* Native management follows the existing dark terminal, system font and individual approval controls. */
+.native-toggle { position: absolute; bottom: 52px; left: 12px; z-index: 30; background: var(--ui-bg-solid); }
+.native-panel { position: absolute; top: 76px; bottom: 54px; left: 12px; width: min(760px, calc(100vw - 24px)); z-index: 80; display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--ui-bg-solid); }
+.native-panel[hidden] { display: none; }
+.native-panel header, .native-toolbar, .native-panel form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.native-panel header { justify-content: space-between; }
+.native-toolbar select { min-width: 120px; flex: 1; }
+.native-panel select, .native-panel textarea { font: inherit; color: var(--ui-text); background: #12151d; border: 1px solid var(--ui-line-strong); border-radius: var(--radius-sm); padding: 8px; }
+.native-panel textarea { flex: 1; resize: vertical; min-width: 120px; }
+.native-panel p { margin: 0; }
+.native-panel button:focus-visible, .native-panel select:focus-visible, .native-panel textarea:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.native-history { overflow: auto; min-height: 100px; flex: 1; border-block: 1px solid var(--ui-line); }
+.native-item { border-bottom: 1px solid var(--ui-line); padding: 12px 4px; }
+.native-item strong { color: var(--ui-accent); }
+.native-item pre, .native-approval pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--font-mono); margin: 6px 0; }
+.native-hint { color: var(--ui-muted); font-size: 12px; }
+.native-hub { max-height: 100px; overflow: auto; font-size: 12px; border-top: 1px solid var(--ui-line); padding-top: 8px; }
+.native-approval { border: 1px solid var(--st-waiting); padding: 10px; max-height: 180px; overflow: auto; }
+.native-approval button { margin: 4px; }
+@media (max-width: 600px) { .native-panel { top: 8px; bottom: 8px; } .native-toolbar { flex-wrap: wrap; } }

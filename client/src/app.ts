@@ -1,3 +1,4 @@
+import { mountNativeCodex } from './ui/native-codex';
 // O app do cliente: store (dados) -> mundo (canvas) -> UI (painéis). Carregado por main.ts depois do dicionário do
 // idioma ativo, porque vários módulos chamam tr() ao carregar.
 import { loadAccess } from './net/access';
@@ -27,6 +28,7 @@ export function start(): void {
   const world = createWorld(worldCanvas, store);
   const city = cityHost({ world, worldCanvas, uiRoot, mock: store.mock, params, version: () => store.liveSnapshot?.meta.version ?? '' });
   createUI(uiRoot, store, world, city);
+  if (!store.mock) void mountNativeCodex(uiRoot);
   // O que esta página pode fazer (porta local ou remota com login) chega antes do primeiro snapshot (ou desiste em
   // poucos segundos e fica a regra de antes).
   if (store.mock) store.connect();

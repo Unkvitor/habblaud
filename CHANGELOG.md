@@ -10,6 +10,13 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- Preview local opcional de gerenciamento Codex pelo App Server oficial: histórico completo paginado,
+  streaming para sessões gerenciadas, decisões individuais vinculadas à solicitação e reconexão sem reenvio.
+  Sessões existentes mantêm `codex queue`/`codex:bridge` e o cliente de origem para aprovações.
+- Painel Gemini/Antigravity com a telemetria real do QA Agent Hub, sem iniciar modelos ou alterar o Hub.
+
 ## [1.0.3] - 2026-10-16
 
 ### Corrigido
