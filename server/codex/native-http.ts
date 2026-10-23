@@ -5,7 +5,7 @@ import { maskSecrets } from '../../shared/activity';
 import { tr } from '../../shared/i18n';
 
 // Called only after the existing Host/Origin/JSON guard, on the local listener.
-export function nativeRoutes(codex: ManagedCodex, names: () => Array<{ sessionId?: string; name: string; id: string }>) {
+export function nativeRoutes(codex: ManagedCodex, names: () => Array<{ sessionId?: string; name: string; id: string }>, hubStatus?: () => unknown) {
   return (req: IncomingMessage, res: ServerResponse, url: URL): boolean => {
     if (!url.pathname.startsWith('/api/native-codex')) return false;
     const address = req.socket.remoteAddress;
@@ -33,6 +33,7 @@ export function nativeRoutes(codex: ManagedCodex, names: () => Array<{ sessionId
       if (req.method === 'GET' && path === '/history') return sendJson(res, 200, await codex.history(url.searchParams.get('thread') ?? '', url.searchParams.get('cursor') ?? undefined));
       if (req.method === 'GET' && path === '/approvals') return sendJson(res, 200, { data: codex.approvals() });
       if (req.method === 'GET' && path === '/hub') {
+        if (hubStatus) return sendJson(res, 200, hubStatus());
         try {
           const response = await fetch('http://127.0.0.1:4748/api/status', { signal: AbortSignal.timeout(2500) });
           if (!response.ok) throw new Error('hub');

@@ -10,6 +10,12 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Corrigido
+
+- Sessões reais do Antigravity informadas pelo QA Hub agora entram no snapshot/SSE e aparecem como
+  personagens Gemini no escritório, na sala do workspace correspondente. Sessões ociosas ou sem sinal
+  recente permanecem visíveis com modelo, provedor e última observação; nenhuma CLI é iniciada.
+
 ### Adicionado
 
 - Preview local opcional de gerenciamento Codex pelo App Server oficial: histórico completo paginado,

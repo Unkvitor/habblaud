@@ -15,7 +15,7 @@ export type AgentKind = 'main' | 'sub';
  * - claude: Claude Code;
  * - codex: OpenAI Codex (CLI `codex` e o app desktop, que gravam no mesmo CODEX_HOME).
  */
-export type Provider = 'claude' | 'codex';
+export type Provider = 'claude' | 'codex' | 'antigravity';
 
 /**
  * Estado de alto nível de um agente — é o que dirige o comportamento do personagem.
@@ -161,6 +161,8 @@ export interface AgentInfo {
   /** Shells rodando que o agente espera: em segundo plano e o comando em primeiro plano ainda sem resultado. */
   shells?: ShellJob[];
   model?: string;
+  /** Última observação real de uma fonte externa; conectividade não implica execução atual. */
+  telemetry?: { status: string; event: string; lastSeen: string; connected: boolean };
   gitBranch?: string;
   permissionMode?: string;
   startedAt: number;

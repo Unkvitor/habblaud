@@ -1,3 +1,4 @@
+import { AntigravitySource, hubOrigin } from './sources/antigravity';
 import { ManagedCodex } from './codex/managed';
 import { nativeRoutes } from './codex/native-http';
 // Servidor do Habblaud: observa as sessões abertas do Claude Code (todas as contas),
@@ -140,6 +141,9 @@ const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
 if (codex) agents.add(codex);
+const antigravity = process.env.HABBLAUD_NATIVE_CODEX === '1'
+  ? new AntigravitySource({office,accounts,origin:hubOrigin(config.inDocker,process.env.HABBLAUD_QA_HUB_URL)}) : undefined;
+if (antigravity) agents.add(antigravity);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
@@ -269,7 +273,7 @@ const dictation = config.messages
   : undefined;
 const nativeCodex = config.terminal && config.messages && !config.inDocker && codexBin && process.env.HABBLAUD_NATIVE_CODEX === '1'
   ? new ManagedCodex(codexBin, join(config.home, 'projetos', 'qa-agents'), join(config.dataDir, 'native-codex.json')) : undefined;
-const nativeApi = nativeCodex ? nativeRoutes(nativeCodex, () => office.list().filter(a => a.provider === 'codex')) : undefined;
+const nativeApi = nativeCodex ? nativeRoutes(nativeCodex, () => office.list().filter(a => a.provider === 'codex'), () => antigravity?.status()) : undefined;
 const queueCodex = codexBin ? createCodexQueueRunner(codexBin) : undefined;
 const messages = config.messages
   ? new MessageRegistry({

@@ -557,7 +557,7 @@ class AgentView {
     const wait = live ? shellWaitIn(a, this.ctx.store.snapshot?.agents ?? [], now) : null;
     const status = wait ? 'shell' : a.status;
     updateStatusDot(this.dot, status);
-    setText(this.statusText, statusLabel(status));
+    setText(this.statusText, a.telemetry ? `${statusLabel(status)} · ${a.telemetry.connected ? a.telemetry.status : tr('Hub desconectado')}` : statusLabel(status));
     // Parado num comando longo: o "desde" é o início do comando (o status do servidor continua 'working').
     const since = wait?.foreground ? wait.since : a.statusSince;
     setText(this.statusSince, relativeTime(since, now));
@@ -616,7 +616,7 @@ class AgentView {
     setText(this.actDetail, detail);
 
     // Mandar mensagem: só para principais presentes (com o recurso ligado e a página local; sem o plugin, a dica).
-    setHidden(this.msgSec.el, this.composer.render(live, this.id) === 'off');
+    setHidden(this.msgSec.el, a.provider === 'antigravity' || this.composer.render(live, this.id) === 'off');
 
     // Vida social (personalidade, carteira, rodas): só de quem está no escritório.
     if (live) this.social.render(a.id, now);
@@ -691,6 +691,9 @@ class AgentView {
   }
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
+    const telemetryOnly = provider === 'antigravity';
+    setHidden(this.termBtn, telemetryOnly);
+    if (telemetryOnly) { setHidden(this.termWhy, true); return; }
     const router = this.ctx.terminals;
     const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal;
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;

@@ -88,3 +88,9 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(codexApprovalLabel(undefined)).toBe('—');
   });
 });
+
+it('keeps the Antigravity provider visible instead of labeling Gemini as Claude/Codex', () => {
+  expect(providerOf({provider:'antigravity'})).toBe('antigravity');
+  expect(showsProviderTag('antigravity')).toBe(true);
+  expect(isCodex({provider:'antigravity'})).toBe(false);
+});

@@ -111,3 +111,55 @@ server/codex/native-http.ts
 O repositório original foi consultado novamente ao final e permaneceu sem alterações.
 As portas 4747, 4748 e 4757 estavam disponíveis em suas respectivas instâncias.
 O preview final foi deixado ativo por um processo WSL separado, sem janela visível.
+## Correção complementar: personagem Gemini real no escritório
+
+Causa raiz: `/api/native-codex/hub` abastecia somente o painel textual. Não havia `AgentSource`
+Antigravity, conta/provedor correspondente ou inserção em `Office`; portanto o SSE do escritório
+não tinha sessão Gemini para o canvas renderizar. A conexão real do backend WSL com 4748 estava funcionando.
+
+Foi adicionada `server/sources/antigravity.ts`, que consulta somente `/api/status`, valida e deduplica
+sessões reais, normaliza o workspace e as publica pelo fluxo existente `Office -> snapshot/SSE -> Sim`.
+Identidade usa sessão real e workspace. `Stop` mantém o personagem ocioso; `sem_sinal` e a última observação
+ficam explícitos. Falhas de rede mantêm a última observação marcada como desconectada, sem inventar eventos.
+O mesmo cache atende o painel textual, evitando duas consultas independentes ao Hub.
+
+O preview Node utiliza `http://127.0.0.1:4748`. Em Docker, o adaptador escolhe
+`http://host.docker.internal:4748`; `HABBLAUD_QA_HUB_URL` aceita somente origens locais na porta 4748.
+Esse endereço precisa ser alcançável pelo container. Como o Hub atual escuta em loopback,
+uma instalação Docker pode exigir conectividade de host já configurada. Não foram alterados bind,
+firewall, Docker ou segurança do Hub; a validação real foi feita no preview Node/WSL.
+
+Nome, provedor, modelo e último estado observado ficam visíveis no personagem/lista e na gaveta.
+Terminal e envio de mensagens são ocultados para Antigravity, pois essa integração é somente telemetria.
+O protocolo do Habblaud World não foi ampliado; seu adaptador de visitas recebeu apenas ajuste de tipos
+para conservar os dois provedores que aquele protocolo já reconhece.
+
+Validação: 4 testes novos da fonte; conjuntos direcionados aprovados (incluindo 118 testes de fonte,
+contas, provedor e simulação); regressões de App Server/aprovações/histórico aprovadas; typecheck e build
+aprovados. `scripts/verify-gemini-office.mjs` confirmou a sessão real
+`7efde01b-aab3-439d-a059-ef5a74951f41`, modelo `gemini-4-argon-medium`, estado `idle`, evento `Stop`,
+observação `sem_sinal`, mesma sala de Marcelo/Henrique, recebimento no store SSE, desenho efetivo do
+rótulo Gemini no canvas, persistência após recarga e ausência de erros JavaScript.
+A captura real está em `.preview-data/gemini-office-real.png` (não versionada).
+O teste funcional Codex anterior também passou novamente. O original permanece sem alterações.
+
+Arquivos desta correção:
+
+```text
+CHANGELOG.md
+client/src/ui/drawer.ts
+client/src/ui/provider.ts
+client/src/ui/provider.test.ts
+client/src/ui/widgets.ts
+client/src/world/sim/sim.ts
+docs/native-codex-preview.md
+scripts/verify-gemini-office.mjs
+server/accounts/detect.ts
+server/codex/native-http.ts
+server/index.ts
+server/model/office.ts
+server/sources/antigravity.ts
+server/sources/antigravity.test.ts
+shared/types.ts
+shared/world/office-from-world.ts
+```

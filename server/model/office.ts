@@ -98,6 +98,8 @@ export interface TranscriptSummary {
 
 export interface MainInput {
   id: string;
+  /** Nome da ferramenta para fontes de telemetria sem nome humano. */
+  name?: string;
   /** Ferramenta do agente (AgentInfo.provider); ausente = 'claude'. Os subagentes herdam a do principal. */
   provider?: Provider;
   account: string;
@@ -332,7 +334,7 @@ export class Office {
       id: p.id,
       kind: 'main',
       roomId,
-      name: person.name,
+      name: p.name ?? person.name,
       look: person.look,
       role: p.role,
       sessionId: p.sessionId,
