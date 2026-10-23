@@ -99,17 +99,19 @@ export class ManagedCodex extends EventEmitter {
     const page = await p.call('thread/items/list', { threadId: id, limit: 100, cursor, sortDirection: 'desc' });
     return { data: page.data.map((v: Json) => publicItem(v.item)).filter(Boolean), nextCursor: page.nextCursor };
   }
-  async create(): Promise<Json> {
+  async create(requestedCwd?: string): Promise<Json> {
     // Merely loading the UI never starts or resumes a session. This is an explicit user action.
+    if (requestedCwd !== undefined && typeof requestedCwd !== 'string') throw new Error(tr('Workspace inválido.'));
+    const cwd = realpathSync(requestedCwd || this.workspace);
+    if (!insideWorkspace(cwd, realpathSync(this.workspace))) throw new Error(tr('Sessão fora do workspace permitido.'));
     const p = await this.connect();
-    const cwd = realpathSync(this.workspace);
     const { thread } = await p.call('thread/start', { cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: 'read-only',
-      config: { 'features.multi_agent': false, 'mcp_servers.codex_tui.enabled': false } });
+      config: { 'features.multi_agent': false } });
     this.managed.add(thread.id); this.loaded.add(thread.id); this.created.set(thread.id, thread); p.manage(thread.id);
     mkdirSync(dirname(this.stateFile), { recursive: true });
     writeFileSync(this.stateFile + '.tmp', JSON.stringify([...this.managed]), { mode: 0o600 });
     renameSync(this.stateFile + '.tmp', this.stateFile);
-    return { id: thread.id };
+    return { id: thread.id, cwd };
   }
   async send(id: string, text: string): Promise<void> {
     if (!this.managed.has(id) || this.busy.has(id)) throw new Error(tr('Sessão não gerenciada ou envio em andamento.'));
@@ -120,7 +122,7 @@ export class ManagedCodex extends EventEmitter {
       if (!this.loaded.has(id)) {
         if (thread.status?.type !== 'notLoaded') throw new Error(tr('Sessão aberta em outro cliente; mantenha o controle no cliente de origem.'));
         await p.call('thread/resume', { threadId: id, excludeTurns: true, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: 'read-only',
-          config: { 'features.multi_agent': false, 'mcp_servers.codex_tui.enabled': false } });
+          config: { 'features.multi_agent': false } });
         this.loaded.add(id);
       }
       if (thread.status?.type === 'active') throw new Error(tr('Aguarde o turno atual concluir.'));

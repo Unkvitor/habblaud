@@ -1,5 +1,9 @@
 # Preview isolado: Codex / Gemini
 
+Atualização: mensagem, streaming, conclusão, histórico e Aprovar/Recusar foram posteriormente
+validados com uma sessão real. Veja [a evidência bidirecional](codex-bidirectional-validation.md).
+O override MCP incompleto foi removido; a revisão humana e o sandbox de somente leitura permanecem.
+
 ## Objetivo e escopo
 
 Gerenciar mensagens, histórico e solicitações suportadas sem alterar o Habblaud original.
@@ -38,7 +42,7 @@ O histórico anterior pode ser carregado por páginas; recarga recupera a seleç
 
 **Nova sessão · somente leitura** é uma ação explícita para uso posterior, não executada na validação.
 O código solicita `sandbox: read-only`, `approvalPolicy: on-request`, `approvalsReviewer: user`,
-`features.multi_agent: false` e `mcp_servers.codex_tui.enabled: false` apenas nessas sessões.
+`features.multi_agent: false` apenas nessas sessões.
 Não modifica configurações globais. O envio usa `turn/start` uma vez, sem repetição após timeout.
 A retomada é permitida somente para IDs criados pelo preview e não carregados em outro cliente.
 Nenhuma política automática ou permissão irrestrita foi habilitada.
@@ -66,9 +70,8 @@ modelo informado, status e última observação reais do Hub. Nenhum personagem 
 
 ## Limitações
 
-- O aceite de envio + resposta nova + aprovação real de ponta a ponta **não foi exercitado**:
-  isso dispararia trabalho de IA ou exigiria uma sessão gerenciada adicional, vedados nesta execução.
-  Streaming e decisões estão cobertos por testes de protocolo; não se apresentam como prova de inferência real.
+- Na etapa inicial não se executou inferência. A validação real posterior, autorizada com uma sessão
+  temporária e três prompts, está registrada em `codex-bidirectional-validation.md`.
 - Aprovações já abertas no terminal, incluindo `codex_tui.send_message_to_thread`, continuam no cliente de origem.
   Não há interceptação do terminal nem chamada MCP entre agentes.
 - Formulários/URLs MCP podem ser recusados; aceitar exige UI específica do schema e fica indisponível.

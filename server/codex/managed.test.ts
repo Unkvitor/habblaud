@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { insideWorkspace, publicItem, ManagedCodex } from './managed';
 it('confines native session access to the configured workspace', () => {
@@ -37,4 +40,22 @@ it('keeps a just-created empty thread selectable and does not request nonexisten
   } });
   expect((await c.list()).data[0]).toMatchObject({ id, managed: true });
   expect((await c.history(id)).data).toEqual([]);
+});
+it('creates a session in the requested isolated real directory and rejects escapes before RPC', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'habblaud-cwd-'));
+  const cwd = join(root, 'isolated'); mkdirSync(cwd);
+  const calls: any[] = [];
+  const c = new ManagedCodex('not-executed', root, join(root,'state.json'));
+  (c as any).ready = Promise.resolve({manage() {}, call: async (method: string, params: any) => {
+    calls.push({method,params}); return {thread:{id:'11111111-1111-1111-1111-111111111111',cwd}};
+  }});
+  try {
+    await c.create(cwd);
+    expect(calls[0].params).toMatchObject({cwd,sandbox:'read-only',approvalPolicy:'on-request',approvalsReviewer:'user'});
+    expect(calls[0].params.config).not.toHaveProperty('mcp_servers.codex_tui.enabled');
+    await expect(c.create(join(root,'..'))).rejects.toThrow();
+    symlinkSync(tmpdir(),join(root,'escape'));
+    await expect(c.create(join(root,'escape'))).rejects.toThrow();
+    expect(calls).toHaveLength(1);
+  } finally { rmSync(root,{recursive:true,force:true}); }
 });

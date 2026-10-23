@@ -12,6 +12,12 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- A criação de sessões Codex gerenciadas aceita subdiretório isolado validado por caminho real.
+  Removido um override MCP incompleto que impedia `thread/start` e `thread/resume`.
+  Mensagem, streaming, conclusão, recarga e decisões individuais foram validados com uma sessão real.
+
+### Corrigido
+
 - Sessões reais do Antigravity informadas pelo QA Hub agora entram no snapshot/SSE e aparecem como
   personagens Gemini no escritório, na sala do workspace correspondente. Sessões ociosas ou sem sinal
   recente permanecem visíveis com modelo, provedor e última observação; nenhuma CLI é iniciada.

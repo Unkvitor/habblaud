@@ -43,7 +43,7 @@ export function nativeRoutes(codex: ManagedCodex, names: () => Array<{ sessionId
       }
       if (req.method === 'POST') {
         const body = await readJson(req) as any;
-        if (path === '/create') return sendJson(res, 201, await codex.create());
+        if (path === '/create') return sendJson(res, 201, await codex.create(body.cwd));
         if (path === '/send') { await codex.send(body.threadId, body.text); return sendJson(res, 202, { ok: true }); }
         if (path === '/decision') { codex.decide(body.identity, body.decision); return sendJson(res, 200, { ok: true }); }
       }
