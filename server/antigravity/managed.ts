@@ -26,6 +26,7 @@ export type AntigravitySession = {
   cwd: string;
   status: AntigravitySessionStatus;
   createdAt: number;
+  title?: string;
   nativeId?: string; model?: string; permissionMode?: string; usage?: Record<string,number>; error?: string;
 };
 
@@ -371,6 +372,50 @@ export class ManagedAntigravity extends EventEmitter {
       active = false;
       this.busy.delete(sessionId);
     }
+  }
+
+
+  rename(sessionId: string, title: string): AntigravitySession {
+    const session = this.requireSession(sessionId);
+
+    if (this.busy.has(sessionId) || session.status === 'working') {
+      throw new Error('Sessão ocupada.');
+    }
+
+    if (
+      typeof title !== 'string' ||
+      !title.trim() ||
+      title.trim().length > 80 ||
+      /[\x00-\x1f\x7f]/.test(title)
+    ) {
+      throw new Error('Nome da conversa inválido.');
+    }
+
+    session.title = title.trim();
+
+    this.publish({
+      method: 'session/renamed',
+      sessionId,
+      status: session.status,
+    });
+
+    return { ...session };
+  }
+
+  remove(sessionId: string): void {
+    const session = this.requireSession(sessionId);
+
+    if (this.busy.has(sessionId) || session.status === 'working') {
+      throw new Error('Sessão ocupada.');
+    }
+
+    this.sessions.delete(sessionId);
+    this.histories.delete(sessionId);
+
+    this.publish({
+      method: 'session/deleted',
+      sessionId,
+    });
   }
 
   recover(sessionId: string): void {

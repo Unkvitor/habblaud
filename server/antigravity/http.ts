@@ -252,6 +252,24 @@ export function createGeminiHttp(
         return true;
       }
 
+
+      if (path === '/rename' && req.method === 'POST') {
+        const body = await readBody(req);
+        const session = manager.rename(
+          field(body, 'id')!,
+          field(body, 'title')!
+        );
+        sendJson(res, 200, { data: session });
+        return true;
+      }
+
+      if (path === '/delete' && req.method === 'POST') {
+        const body = await readBody(req);
+        manager.remove(field(body, 'id')!);
+        sendJson(res, 200, { ok: true });
+        return true;
+      }
+
       if (path === '/recover' && req.method === 'POST') {
         const body = await readBody(req);
         manager.recover(field(body, 'id')!);
