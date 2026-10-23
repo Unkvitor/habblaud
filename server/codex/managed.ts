@@ -34,6 +34,7 @@ export class ManagedCodex extends EventEmitter {
   private loaded = new Set<string>();
   private busy = new Set<string>();
   private streaming = new Map<string, string>();
+  private created = new Map<string, Json>();
   constructor(private bin: string, readonly workspace: string, private stateFile: string) {
     super();
     try { for (const id of JSON.parse(readFileSync(stateFile, 'utf8'))) if (THREAD_ID.test(id)) this.managed.add(id); } catch { /* new isolated state */ }
@@ -53,7 +54,7 @@ export class ManagedCodex extends EventEmitter {
     child.stdout.on('data', chunk => { try { p.push(chunk); } catch { child.stdin.end(); } });
     child.stderr.resume(); // do not publish raw process logs or credentials
     const closed = () => {
-      p.close(); this.loaded.clear(); this.streaming.clear();
+      p.close(); this.loaded.clear(); this.streaming.clear(); this.created.clear();
       if (this.child === child) { this.ready = undefined; this.child = undefined; this.protocol = undefined; }
       this.emit('update', { method: 'connection/closed' });
     };
@@ -80,6 +81,7 @@ export class ManagedCodex extends EventEmitter {
   async list(cursor?: string): Promise<Json> {
     const p = await this.connect();
     const page = await p.call('thread/list', { limit: 100, cursor, useStateDbOnly: true });
+    if (!cursor) for (const thread of this.created.values()) if (!page.data.some((t: Json) => t.id === thread.id)) page.data.unshift(thread);
     return { data: page.data.filter((t: Json) => insideWorkspace(t.cwd, this.workspace)).map((t: Json) => ({
       id: t.id, name: maskSecrets(t.name || t.agentNickname || t.preview || t.id), status: t.status, managed: this.isManaged(t.id),
     })), nextCursor: page.nextCursor };
@@ -92,7 +94,8 @@ export class ManagedCodex extends EventEmitter {
     return { p, thread };
   }
   async history(id: string, cursor?: string): Promise<Json> {
-    const { p } = await this.check(id);
+    const { p, thread } = await this.check(id);
+    if (this.isManaged(id) && !thread.path) return { data: [], nextCursor: null };
     const page = await p.call('thread/items/list', { threadId: id, limit: 100, cursor, sortDirection: 'desc' });
     return { data: page.data.map((v: Json) => publicItem(v.item)).filter(Boolean), nextCursor: page.nextCursor };
   }
@@ -102,7 +105,7 @@ export class ManagedCodex extends EventEmitter {
     const cwd = realpathSync(this.workspace);
     const { thread } = await p.call('thread/start', { cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: 'read-only',
       config: { 'features.multi_agent': false, 'mcp_servers.codex_tui.enabled': false } });
-    this.managed.add(thread.id); this.loaded.add(thread.id); p.manage(thread.id);
+    this.managed.add(thread.id); this.loaded.add(thread.id); this.created.set(thread.id, thread); p.manage(thread.id);
     mkdirSync(dirname(this.stateFile), { recursive: true });
     writeFileSync(this.stateFile + '.tmp', JSON.stringify([...this.managed]), { mode: 0o600 });
     renameSync(this.stateFile + '.tmp', this.stateFile);

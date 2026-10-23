@@ -25,3 +25,16 @@ it('rejects control of a legacy session before launching any process', async () 
   const c = new ManagedCodex('not-executed', '/work/qa', '/nonexistent/native-state.json');
   await expect(c.send('legacy', 'do not execute')).rejects.toThrow();
 });
+it('keeps a just-created empty thread selectable and does not request nonexistent rollout history', async () => {
+  const id = '11111111-1111-1111-1111-111111111111';
+  const c = new ManagedCodex('not-executed', '/work/qa', '/nonexistent/native-state.json');
+  (c as any).managed.add(id);
+  (c as any).created = new Map([[id, { id, cwd: '/work/qa', name: 'Codex', path: null, status: { type: 'idle' } }]]);
+  (c as any).ready = Promise.resolve({ call: async (method: string) => {
+    if (method === 'thread/list') return { data: [], nextCursor: null };
+    if (method === 'thread/read') return { thread: { id, cwd: '/work/qa', path: null } };
+    throw new Error('must not read nonexistent history');
+  } });
+  expect((await c.list()).data[0]).toMatchObject({ id, managed: true });
+  expect((await c.history(id)).data).toEqual([]);
+});
