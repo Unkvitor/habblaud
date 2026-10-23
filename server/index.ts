@@ -1,3 +1,5 @@
+import { ManagedCodex } from './codex/managed';
+import { nativeRoutes } from './codex/native-http';
 // Servidor do Habblaud: observa as sessões abertas do Claude Code (todas as contas),
 // mantém o modelo do escritório e transmite via SSE. Sem dependências de runtime.
 //   npm run dev    -> tsx server/index.ts --dev (Vite em middleware mode, HMR no mesmo servidor)
@@ -265,13 +267,21 @@ const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
 const dictation = config.messages
   ? new DictationService(whisper && !('missing' in whisper) ? { transcriber: createWhisperTranscriber(whisper) } : {})
   : undefined;
+const nativeCodex = config.terminal && config.messages && !config.inDocker && codexBin && process.env.HABBLAUD_NATIVE_CODEX === '1'
+  ? new ManagedCodex(codexBin, join(config.home, 'projetos', 'qa-agents'), join(config.dataDir, 'native-codex.json')) : undefined;
+const nativeApi = nativeCodex ? nativeRoutes(nativeCodex, () => office.list().filter(a => a.provider === 'codex')) : undefined;
+const queueCodex = codexBin ? createCodexQueueRunner(codexBin) : undefined;
 const messages = config.messages
   ? new MessageRegistry({
       office,
       demoAgent: (id) => office.demoAgent(id),
       demoDeliver: (id, text) => office.deliverDemoMessage(id, text),
       codex: {
-        run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
+        run: queueCodex ? async (job) => {
+          if (!nativeCodex?.isManaged(job.thread)) return queueCodex(job);
+          try { await nativeCodex.send(job.thread, job.text); return { ok: true }; }
+          catch (e) { return { ok: false, error: errMsg(e) }; }
+        } : undefined,
         homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
       },
     })
@@ -413,6 +423,7 @@ server.on('request', (req, res) => {
   const url = parseUrl(req);
   try {
     if (guard(req, res)) return;
+    if (nativeApi?.(req, res, url)) return;
     if (!api(req, res, url)) fallback(req, res, url);
   } catch (err) {
     log.warn(tr('Erro ao responder {0} {1}: {2}', [req.method, url.pathname, errMsg(err)]));
@@ -447,7 +458,8 @@ if (config.remote) {
       try {
         if (guard(req, res)) return;
         if (gate(req, res, url)) return;
-        if (!api(req, res, url)) fallback(req, res, url);
+        if (nativeApi?.(req, res, url)) return;
+    if (!api(req, res, url)) fallback(req, res, url);
       } catch (err) {
         log.warn(tr('Erro ao responder (remoto) {0} {1}: {2}', [req.method, url.pathname, errMsg(err)]));
         if (!res.headersSent) sendJson(res, 500, { error: tr('erro interno') });
