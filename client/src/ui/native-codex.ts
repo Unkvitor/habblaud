@@ -1,4 +1,5 @@
 import { h } from './dom';
+import { mountGeminiPreview } from './gemini-preview';
 import { tr } from '../../../shared/i18n';
 
 type Item = { id: string; text: string; type?: string; status?: string };
@@ -35,7 +36,47 @@ export async function mountNativeCodex(root: HTMLElement): Promise<void> {
   const send = h('button', { class: 'ui-btn ui-btn--primary', text: tr('Enviar'), type: 'submit' });
   const form = h('form', {}, input, send);
   const hub = h('div', { class: 'native-hub' });
-  panel.append(header, h('div', { class: 'native-toolbar' }, sessions, moreThreads, create), state, hint, older, history, approvals, form, hub);
+  const codexArea = h('div');
+  codexArea.append(
+    h('div', { class: 'native-toolbar' }, sessions, moreThreads, create),
+    state, hint, older, history, approvals, form, hub
+  );
+
+  const geminiArea = h('div', { hidden: true });
+  mountGeminiPreview(geminiArea);
+
+  const tabs = h('div', {
+    class: 'native-toolbar',
+    attrs: { role: 'tablist', 'aria-label': 'Provedor de IA' }
+  });
+
+  const codexTab = h('button', {
+    class: 'ui-btn',
+    text: 'Codex',
+    attrs: { role: 'tab', 'aria-selected': 'true' }
+  });
+
+  const geminiTab = h('button', {
+    class: 'ui-btn',
+    text: 'Gemini',
+    attrs: { role: 'tab', 'aria-selected': 'false' }
+  });
+
+  codexTab.type = 'button';
+  geminiTab.type = 'button';
+
+  const selectProvider = (provider: 'codex' | 'gemini') => {
+    codexArea.hidden = provider !== 'codex';
+    geminiArea.hidden = provider !== 'gemini';
+    codexTab.setAttribute('aria-selected', String(provider === 'codex'));
+    geminiTab.setAttribute('aria-selected', String(provider === 'gemini'));
+  };
+
+  codexTab.onclick = () => selectProvider('codex');
+  geminiTab.onclick = () => selectProvider('gemini');
+
+  tabs.append(codexTab, geminiTab);
+  panel.append(header, tabs, codexArea, geminiArea);
   root.append(toggle, panel);
   let threads: Thread[] = [], selected = '', items: Item[] = [], cursor: string | null = null, threadCursor: string | null = null;
   let source: EventSource | undefined, polling: ReturnType<typeof setInterval> | undefined;
