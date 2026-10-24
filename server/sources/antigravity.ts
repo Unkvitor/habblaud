@@ -36,6 +36,24 @@ export class AntigravitySource implements AgentSource {
   private rows: Row[] = [];
   private ids = new Set<string>();
   private account = 'qa-hub-antigravity';
+  private managed: Array<{cwd:string;nativeId?:string;status:string}> = [];
+  setManagedSessions(sessions:Array<{cwd:string;nativeId?:string;status:string}>):void {
+    this.managed=sessions;
+    for(const id of this.ids){
+      const agent=this.opts.office.get(id);
+      if(!agent)continue;
+      const active=sessions.some(s=>s.cwd===agent.roomId&&s.status==='working');
+      const own=sessions.find(s=>s.nativeId===agent.sessionId);
+      if(active)agent.status='working';
+      else if(own)agent.status='idle';
+    }
+    this.opts.office.markDirty();
+  }
+  private executionState(row:Row):AgentStatus {
+    if(this.managed.some(s=>s.cwd===row.workspace&&s.status==='working'))return 'working';
+    if(this.managed.some(s=>s.nativeId===row.session))return 'idle';
+    return state(row);
+  }
   constructor(private opts: { office: Office; accounts: AccountsService; origin: string; fetchStatus?: () => Promise<unknown> }) {}
   async start(): Promise<void> {
     this.opts.office.beginBoot();
@@ -71,15 +89,15 @@ export class AntigravitySource implements AgentSource {
       for (const row of this.rows) {
         const current = latest.get(row.workspace);
         if (!current || Date.parse(row.last_seen) > Date.parse(current.last_seen)) latest.set(row.workspace,row);
-        if (state(row) === 'working') continue;
+        if (this.executionState(row) === 'working') continue;
         const previous = latestIdle.get(row.workspace);
         if (!previous || Date.parse(row.last_seen) > Date.parse(previous.last_seen)) latestIdle.set(row.workspace, row);
       }
       const present = new Set<string>();
-      for (const row of this.rows.filter(row => state(row) === 'working' || latestIdle.get(row.workspace) === row)) {
+      for (const row of this.rows.filter(row => (this.executionState(row) === 'working' && (latest.get(row.workspace)===row || state(row)==='working')) || latestIdle.get(row.workspace) === row)) {
         const id = 'antigravity:' + (latest.get(row.workspace)===row?'workspace':row.session) + ':' + hash32(row.workspace); present.add(id);
         const at = Date.parse(row.last_seen);
-        this.opts.office.addMain({id,name:'Gemini',provider:this.provider,account:this.account,sessionId:row.session,cwd:row.workspace,role:tr('Antigravity CLI · telemetria do QA Hub'),startedAt:at,status:state(row)});
+        this.opts.office.addMain({id,name:'Gemini',provider:this.provider,account:this.account,sessionId:row.session,cwd:row.workspace,role:tr('Antigravity CLI · telemetria do QA Hub'),startedAt:at,status:this.executionState(row)});
         const agent = this.opts.office.get(id)!;
         agent.sessionId = row.session;
         agent.name = 'Gemini'; agent.model = row.model; agent.lastEventAt = at;

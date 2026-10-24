@@ -20,6 +20,8 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- O estado de execução Gemini gerenciada atualiza o escritório imediatamente e permanece trabalhando durante o turno, mesmo quando a telemetria do Hub fica antiga.
+
 - O personagem Gemini mantém sua identidade por workspace quando muda a conversa mais recente. Respostas vazias do CLI não são mais marcadas como sucesso; texto recebido por streaming é preservado quando o resultado final vem vazio.
 
 - A criação de sessões Codex gerenciadas aceita subdiretório isolado validado por caminho real.

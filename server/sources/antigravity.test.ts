@@ -52,6 +52,14 @@ describe('real Hub sessions in the office', () => {
   });
 });
 describe('office representation versus Hub history', () => {
+  it('uses managed execution while Hub events are stale, then returns to idle',async()=>{
+    const {office,source}=setup();await source.poll();
+    source.setManagedSessions([{cwd:workspace,status:'working'}]);
+    expect(office.list()[0].status).toBe('working');
+    await source.poll();expect(office.list()[0].status).toBe('working');
+    source.setManagedSessions([{cwd:workspace,nativeId:session.session,status:'idle'}]);
+    expect(office.list()[0].status).toBe('idle');
+  });
   it('keeps the workspace character identity when the latest conversation changes',async()=>{
     const {office,source,set}=setup();await source.poll();
     const before=office.list()[0].id;
