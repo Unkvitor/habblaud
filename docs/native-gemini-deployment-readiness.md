@@ -7,7 +7,7 @@ Data do ensaio: 2026-10-24 UTC. Decisão: **GO condicionado**. Este documento pr
 | Item | Estado |
 |---|---|
 | Original | `/home/joo_vitor/habblaud`, `main`, `faa1a012b5fbf632c66dc6801c5383e53a542406`, limpo |
-| Integração | `/home/joo_vitor/habblaud-preview`, `fix/native-codex-preview`, base original + 17 commits |
+| Integração | `/home/joo_vitor/habblaud-preview`, `fix/native-codex-preview`, base original + sequência registrada pelo HEAD |
 | Preview validado | `http://127.0.0.1:4757`, dados em `.preview-data`, Gemini real opt-in |
 | Original ativo | Docker `habblaud:local`, porta 4747, volume `habblaud_habblaud-data` |
 | QA Agent Hub | porta 4748, somente leitura |
@@ -21,6 +21,7 @@ Diretório protegido: `/home/joo_vitor/habblaud-deployment-backups/20261024T0044
 
 - `original-faa1a012.bundle`: histórico Git completo do original.
 - `integration-4d0c929.bundle`: branch auditada até o checkpoint anterior.
+- `integration-latest.bundle`: pacote final atualizado após o checkpoint documental.
 - `host-habblaud-state.tar.gz`: estado de `~/.habblaud`.
 - `docker-data.tar.gz`: snapshot de `/data` do container original.
 - `docker-inspect.json`: configuração restaurável do container; tratar como sensível.
