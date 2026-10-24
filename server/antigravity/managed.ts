@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { realpathSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import {dirname} from 'node:path';
 import {maskSecrets} from '../../shared/activity';
+import {tr} from '../../shared/i18n';
 import { relative, resolve, sep } from 'node:path';
 
 export type AntigravitySessionStatus =
@@ -26,6 +27,7 @@ export type AntigravitySession = {
   cwd: string;
   status: AntigravitySessionStatus;
   createdAt: number;
+  updatedAt?: number;
   title?: string;
   nativeId?: string; model?: string; permissionMode?: string; usage?: Record<string,number>; error?: string;
 };
@@ -43,7 +45,8 @@ export type AntigravityLauncher = (
   session: AntigravitySession,
   text: string,
   onChunk?: (chunk: string) => void,
-  onMeta?: (meta: Partial<AntigravitySession> & {progress?: unknown}) => void
+  onMeta?: (meta: Partial<AntigravitySession> & {progress?: unknown}) => void,
+  signal?: AbortSignal
 ) => Promise<void | {nativeId?:string; text:string; usage?:Record<string,number>}> | void;
 
 export type ManagedAntigravityOptions = {
@@ -89,6 +92,7 @@ export class ManagedAntigravity extends EventEmitter {
     new Map<string, AntigravityMessage[]>();
 
   private readonly busy = new Set<string>();
+  private readonly controllers = new Map<string, AbortController>();
 
   private readonly workspace: string;
   private readonly launch?: AntigravityLauncher;
@@ -166,6 +170,7 @@ export class ManagedAntigravity extends EventEmitter {
     };
 
     history.push(message);
+    this.requireSession(sessionId).updatedAt = message.createdAt;
 
     while (history.length > this.maxMessages) {
       history.shift();
@@ -181,9 +186,9 @@ export class ManagedAntigravity extends EventEmitter {
   }
 
   list(): AntigravitySession[] {
-    return [...this.sessions.values()].map(
-      session => ({ ...session })
-    );
+    return [...this.sessions.values()]
+      .sort((a,b)=>(b.updatedAt??b.createdAt)-(a.updatedAt??a.createdAt))
+      .map(session=>({...session}));
   }
 
   history(sessionId: string): AntigravityMessage[] {
@@ -213,6 +218,7 @@ export class ManagedAntigravity extends EventEmitter {
       cwd,
       status: 'idle',
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     this.sessions.set(session.id, session);
@@ -267,6 +273,8 @@ export class ManagedAntigravity extends EventEmitter {
     }
 
     this.busy.add(sessionId);
+    const controller = new AbortController();
+    this.controllers.set(sessionId, controller);
     session.status = 'working';
 
     this.addMessage(sessionId, 'user', text, true);
@@ -310,7 +318,7 @@ export class ManagedAntigravity extends EventEmitter {
         method: 'message/delta',
         sessionId,
         message: { ...answer },
-        delta: chunk,
+        delta: maskSecrets(chunk),
       });
     };
 
@@ -325,7 +333,8 @@ export class ManagedAntigravity extends EventEmitter {
           if(meta.permissionMode)session.permissionMode=meta.permissionMode;
           if(meta.usage)session.usage=meta.usage;
           this.publish({method:'session/progress',sessionId});
-        }
+        },
+        controller.signal
       );
       if(result){
         if(result.nativeId)session.nativeId=result.nativeId;
@@ -371,6 +380,7 @@ export class ManagedAntigravity extends EventEmitter {
     } finally {
       active = false;
       this.busy.delete(sessionId);
+      this.controllers.delete(sessionId);
     }
   }
 
@@ -392,6 +402,7 @@ export class ManagedAntigravity extends EventEmitter {
     }
 
     session.title = title.trim();
+    session.updatedAt = Date.now();
 
     this.publish({
       method: 'session/renamed',
@@ -418,6 +429,16 @@ export class ManagedAntigravity extends EventEmitter {
     });
   }
 
+  cancel(sessionId: string): void {
+    this.requireSession(sessionId);
+    const controller = this.controllers.get(sessionId);
+    if (!controller || !this.busy.has(sessionId) || controller.signal.aborted) {
+      throw new Error(tr('Sess\u00e3o sem execu\u00e7\u00e3o ativa.'));
+    }
+    controller.abort();
+    this.publish({method:'session/cancelRequested',sessionId,status:'working'});
+  }
+
   recover(sessionId: string): void {
     const session = this.requireSession(sessionId);
 
@@ -430,6 +451,7 @@ export class ManagedAntigravity extends EventEmitter {
     }
 
     session.status = 'idle';
+    session.updatedAt = Date.now();
     delete session.error;
 
     this.publish({

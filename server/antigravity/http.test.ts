@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { ManagedAntigravity } from './managed';
+import { ManagedAntigravity, type AntigravityLauncher } from './managed';
 import {
   createDemoAntigravityLauncher,
   createGeminiHttp,
@@ -18,10 +18,10 @@ afterEach(async () => {
   ));
 });
 
-async function setup() {
+async function setup(launch:AntigravityLauncher=createDemoAntigravityLauncher()) {
   const manager = new ManagedAntigravity({
     workspace: process.cwd(),
-    launch: createDemoAntigravityLauncher(),
+    launch,
   });
 
   const handler = createGeminiHttp(manager);
@@ -131,4 +131,21 @@ describe('API Gemini isolada', () => {
 
     expect(response.status).toBe(404);
   });
+  it('cancels only a managed turn through the guarded route',async()=>{
+    let started!:()=>void;
+    const ready=new Promise<void>(resolve=>{started=resolve;});
+    const {manager,post}=await setup((_session,_text,onChunk,_meta,signal)=>{
+      onChunk?.('partial');started();
+      return new Promise((_resolve,reject)=>signal?.addEventListener('abort',()=>reject(new Error('cancelled')),{once:true}));
+    });
+    const created=await post('/api/native-gemini/create',{});
+    const session=await created.json() as {id:string};
+    const pending=post('/api/native-gemini/send',{id:session.id,text:'short'});
+    await ready;
+    const cancelled=await post('/api/native-gemini/cancel',{id:session.id});
+    expect(cancelled.status).toBe(200);
+    expect((await pending).status).toBe(409);
+    expect(manager.history(session.id).at(-1)).toMatchObject({text:'partial',complete:false});
+  });
+
 });

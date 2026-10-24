@@ -270,6 +270,13 @@ export function createGeminiHttp(
         return true;
       }
 
+      if (path === '/cancel' && req.method === 'POST') {
+        const body = await readBody(req);
+        manager.cancel(field(body, 'id')!);
+        sendJson(res, 200, { ok: true });
+        return true;
+      }
+
       if (path === '/recover' && req.method === 'POST') {
         const body = await readBody(req);
         manager.recover(field(body, 'id')!);

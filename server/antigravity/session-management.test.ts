@@ -104,3 +104,18 @@ describe('Gerenciamento de sessões Gemini', () => {
       .toThrow('Nome da conversa inválido');
   });
 });
+
+describe('recent conversations',()=>{
+ it('lists the most recently updated conversation first',async()=>{
+  const {vi}=await import('vitest');
+  vi.useFakeTimers();
+  try{
+   const manager=new ManagedAntigravity({workspace:process.cwd(),launch:async()=>({text:'OK'})});
+   vi.setSystemTime(1000);const first=manager.create();
+   vi.setSystemTime(2000);const second=manager.create();
+   expect(manager.list().map(s=>s.id)).toEqual([second.id,first.id]);
+   vi.setSystemTime(3000);await manager.send(first.id,'short');
+   expect(manager.list()[0].id).toBe(first.id);
+  }finally{vi.useRealTimers();}
+ });
+});

@@ -218,3 +218,13 @@ describe('Antigravity - Conversação', () => {
     expect(manager.history(session.id)).toEqual([]);
   });
 });
+
+describe('stream privacy',()=>{
+ it('never sends an unmasked raw token in the SSE update',async()=>{
+  const updates:unknown[]=[];
+  const manager=new ManagedAntigravity({workspace:process.cwd(),launch:async(_s,_t,onChunk)=>{onChunk?.('sk-proj-abcdefghijklmnop');}});
+  manager.on('update',event=>updates.push(event));
+  const session=manager.create();await manager.send(session.id,'safe prompt');
+  expect(JSON.stringify(updates)).not.toContain('sk-proj-abcdefghijklmnop');
+ });
+});
