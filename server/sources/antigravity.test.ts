@@ -33,7 +33,7 @@ describe('real Hub sessions in the office', () => {
   it('updates the same session and retains its last observation across network failure', async () => {
     const {office,source,set} = setup();
     await source.poll();
-    set({antigravity:{sessions:[{...session,status:'trabalhando',event:'PreToolUse'}]}});
+    set({antigravity:{sessions:[{...session,status:'trabalhando',event:'PreToolUse',last_seen:new Date().toISOString()}]}});
     await source.poll(); expect(office.list()[0].status).toBe('working');
     set(new Error('offline')); await source.poll(); office.tick();
     expect(office.list()).toHaveLength(1);
@@ -56,12 +56,24 @@ describe('office representation versus Hub history', () => {
     const {office,source,set}=setup();
     const old={...session,session:'old',last_seen:'2026-10-22T19:00:00-03:00'};
     const latest={...session,session:'latest',last_seen:'2026-10-22T21:00:00-03:00'};
-    const busy={...session,session:'busy',status:'trabalhando',event:'PreToolUse',last_seen:'2026-10-22T20:00:00-03:00'};
+    const busy={...session,session:'busy',status:'trabalhando',event:'PreToolUse',last_seen:new Date().toISOString()};
     set({antigravity:{sessions:[old,latest,busy]}});
     await source.poll();office.tick();
     const shown=office.commit().snapshot.agents.filter(a=>a.provider==='antigravity');
     expect(shown.map(a=>a.sessionId).sort()).toEqual(['busy','latest']);
     expect(source.status().antigravity.sessions).toHaveLength(3);
     expect(source.sources()[0].sessions).toBe(3);
+  });
+
+  it('does not represent a stale working observation as a live process', async () => {
+    const {office,source,set}=setup();
+    const recentStop={...session,session:'recent-stop',last_seen:new Date(Date.now()-10_000).toISOString()};
+    const staleWorking={...session,session:'stale-working',status:'trabalhando',event:'PreToolUse',last_seen:new Date(Date.now()-300_000).toISOString()};
+    set({antigravity:{sessions:[staleWorking,recentStop]}});
+    await source.poll();office.tick();
+    const shown=office.commit().snapshot.agents.filter(a=>a.provider==='antigravity');
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatchObject({sessionId:'recent-stop',status:'idle'});
+    expect(source.status().antigravity.sessions).toHaveLength(2);
   });
 });

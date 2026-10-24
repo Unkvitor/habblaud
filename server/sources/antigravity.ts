@@ -9,6 +9,7 @@ import { maskSecrets } from '../../shared/activity';
 import { tr } from '../../shared/i18n';
 
 type Row = { session: string; workspace: string; model: string; status: string; event: string; last_seen: string };
+const WORKING_FRESHNESS_MS = 60_000;
 export function hubOrigin(inDocker: boolean, explicit?: string): string {
   const url = new URL(explicit || (inDocker ? 'http://host.docker.internal:4748' : 'http://127.0.0.1:4748'));
   if (url.protocol !== 'http:' || !['127.0.0.1','localhost','[::1]','host.docker.internal'].includes(url.hostname) || url.port !== '4748' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error(tr('Endereço local do QA Hub inválido.'));
@@ -21,7 +22,9 @@ function normalize(raw: unknown): Row | null {
 }
 function state(r: Row): AgentStatus {
   if (r.event === 'Stop') return 'idle';
-  return r.status === 'trabalhando' ? 'working' : 'idle';
+  const age = Date.now() - Date.parse(r.last_seen);
+  const fresh = age >= -WORKING_FRESHNESS_MS && age <= WORKING_FRESHNESS_MS;
+  return r.status === 'trabalhando' && fresh ? 'working' : 'idle';
 }
 export class AntigravitySource implements AgentSource {
   readonly provider = 'antigravity' as const;
