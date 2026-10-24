@@ -39,13 +39,13 @@ export class CliReply{
   if(j?.event==='result'){
    const r=j.result;if(r?.conversation_id)this.acceptId(r.conversation_id);
    if(r?.status!=='SUCCESS')throw new Error(maskSecrets(String(r?.error||`Antigravity: ${r?.status||'resultado inválido'}`)));
-   this.text=typeof r.response==='string'?r.response:this.text;
+   this.text=typeof r.response==='string'&&r.response.trim()?r.response:this.text;
    if(this.text.length>MAX_RESPONSE)throw new Error('Resposta excede o limite permitido.');
    const usage=r.usage&&typeof r.usage==='object'&&!Array.isArray(r.usage)?r.usage:{};
    this.usage=Object.fromEntries(Object.entries(usage).filter(([,v])=>typeof v==='number'&&Number.isFinite(v)&&v>=0)) as Record<string,number>;this.done=true;this.meta({nativeId:this.nativeId,usage:this.usage});
   }
  }
- finish():void{if(!this.done || !this.nativeId)throw new Error('CLI terminou sem resultado nativo confirmado; confira o histórico antes de repetir.');}
+ finish():void{if(!this.done || !this.nativeId)throw new Error('CLI terminou sem resultado nativo confirmado; confira o histórico antes de repetir.');if(!this.text.trim())throw new Error('CLI terminou sem resposta visível; confira a conversa e as permissões no terminal antes de repetir.');}
 }
 export function createAntigravityLauncher(bin:string,opts:{timeoutMs?:number;killGraceMs?:number}={}):AntigravityLauncher{
  const timeoutMs=opts.timeoutMs??120000;const killGraceMs=opts.killGraceMs??2000;

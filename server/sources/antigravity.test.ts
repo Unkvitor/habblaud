@@ -52,6 +52,14 @@ describe('real Hub sessions in the office', () => {
   });
 });
 describe('office representation versus Hub history', () => {
+  it('keeps the workspace character identity when the latest conversation changes',async()=>{
+    const {office,source,set}=setup();await source.poll();
+    const before=office.list()[0].id;
+    set({antigravity:{sessions:[session,{...session,session:'new-conversation',last_seen:new Date().toISOString()}]}});
+    await source.poll();office.tick();
+    expect(office.list()).toHaveLength(1);
+    expect(office.list()[0]).toMatchObject({id:before,sessionId:'new-conversation'});
+  });
   it('keeps only the latest idle Gemini per workspace while retaining all observed sessions', async () => {
     const {office,source,set}=setup();
     const old={...session,session:'old',last_seen:'2026-10-22T19:00:00-03:00'};

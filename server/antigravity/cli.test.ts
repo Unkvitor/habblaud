@@ -1,5 +1,18 @@
 import {it,expect} from 'vitest';
 import {CliReply, cliArgs} from './cli';
+it('rejects a successful result with no user-visible answer',()=>{
+ const r=new CliReply();
+ r.accept({event:'init',conversation_id:'12345678-1234-4234-8234-123456789abc'});
+ r.accept({event:'result',result:{status:'SUCCESS',response:''}});
+ expect(()=>r.finish()).toThrow('sem resposta');
+});
+it('preserves streamed text when the final response is empty',()=>{
+ const r=new CliReply();
+ r.accept({event:'init',conversation_id:'12345678-1234-4234-8234-123456789abc'});
+ r.accept({event:'step_update',step_update:{step_type:'agent_response',text_delta:'Answer'}});
+ r.accept({event:'result',result:{status:'SUCCESS',response:''}});
+ r.finish();expect(r.text).toBe('Answer');
+});
 it('uses official safe stdin protocol and resumes only an explicit conversation',()=>{
  const args=cliArgs('12345678-1234-1234-1234-123456789abc');
  expect(args).toContain('--sandbox'); expect(args).toContain('plan');

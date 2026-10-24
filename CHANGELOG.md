@@ -20,6 +20,8 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- O personagem Gemini mantém sua identidade por workspace quando muda a conversa mais recente. Respostas vazias do CLI não são mais marcadas como sucesso; texto recebido por streaming é preservado quando o resultado final vem vazio.
+
 - A criação de sessões Codex gerenciadas aceita subdiretório isolado validado por caminho real.
   Removido um override MCP incompleto que impedia `thread/start` e `thread/resume`.
   Mensagem, streaming, conclusão, recarga e decisões individuais foram validados com uma sessão real.

@@ -67,17 +67,21 @@ export class AntigravitySource implements AgentSource {
       // The Hub returns observed conversation history, not a process list.
       // Show the latest idle observation per workspace and every working session.
       const latestIdle = new Map<string, Row>();
+      const latest = new Map<string, Row>();
       for (const row of this.rows) {
+        const current = latest.get(row.workspace);
+        if (!current || Date.parse(row.last_seen) > Date.parse(current.last_seen)) latest.set(row.workspace,row);
         if (state(row) === 'working') continue;
         const previous = latestIdle.get(row.workspace);
         if (!previous || Date.parse(row.last_seen) > Date.parse(previous.last_seen)) latestIdle.set(row.workspace, row);
       }
       const present = new Set<string>();
       for (const row of this.rows.filter(row => state(row) === 'working' || latestIdle.get(row.workspace) === row)) {
-        const id = 'antigravity:' + row.session + ':' + hash32(row.workspace); present.add(id);
+        const id = 'antigravity:' + (latest.get(row.workspace)===row?'workspace':row.session) + ':' + hash32(row.workspace); present.add(id);
         const at = Date.parse(row.last_seen);
         this.opts.office.addMain({id,name:'Gemini',provider:this.provider,account:this.account,sessionId:row.session,cwd:row.workspace,role:tr('Antigravity CLI · telemetria do QA Hub'),startedAt:at,status:state(row)});
         const agent = this.opts.office.get(id)!;
+        agent.sessionId = row.session;
         agent.name = 'Gemini'; agent.model = row.model; agent.lastEventAt = at;
         agent.telemetry = {status:row.status,event:row.event,lastSeen:row.last_seen,connected:true};
         agent.title = tr('Modelo: {0}. Último evento: {1} · {2} · {3}', [row.model || tr('não informado'),row.event,row.status,row.last_seen]);
