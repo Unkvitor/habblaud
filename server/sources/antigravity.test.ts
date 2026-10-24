@@ -51,3 +51,17 @@ describe('real Hub sessions in the office', () => {
     expect(()=>hubOrigin(true,'https://external.example')).toThrow();
   });
 });
+describe('office representation versus Hub history', () => {
+  it('keeps only the latest idle Gemini per workspace while retaining all observed sessions', async () => {
+    const {office,source,set}=setup();
+    const old={...session,session:'old',last_seen:'2026-10-22T19:00:00-03:00'};
+    const latest={...session,session:'latest',last_seen:'2026-10-22T21:00:00-03:00'};
+    const busy={...session,session:'busy',status:'trabalhando',event:'PreToolUse',last_seen:'2026-10-22T20:00:00-03:00'};
+    set({antigravity:{sessions:[old,latest,busy]}});
+    await source.poll();office.tick();
+    const shown=office.commit().snapshot.agents.filter(a=>a.provider==='antigravity');
+    expect(shown.map(a=>a.sessionId).sort()).toEqual(['busy','latest']);
+    expect(source.status().antigravity.sessions).toHaveLength(3);
+    expect(source.sources()[0].sessions).toBe(3);
+  });
+});

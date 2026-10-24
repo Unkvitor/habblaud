@@ -41,7 +41,7 @@ export class AntigravitySource implements AgentSource {
   }
   stop(): void { this.stopped = true; if (this.timer) clearInterval(this.timer); }
   transcriptPathOf(): undefined { return undefined; }
-  sources(): SourceInfo[] { return [{ provider: this.provider, label: 'QA Hub · Antigravity', path: this.opts.origin, sessions: this.ids.size, ok: this.online, ...(this.error ? {error:this.error} : {}) }]; }
+  sources(): SourceInfo[] { return [{ provider: this.provider, label: 'QA Hub · Antigravity', path: this.opts.origin, sessions: this.rows.length, ok: this.online, ...(this.error ? {error:this.error} : {}) }]; }
   status(): { online: boolean; antigravity: { sessions: Row[] } } { return { online: this.online, antigravity: {sessions:this.rows} }; }
   async poll(): Promise<void> {
     if (this.polling || this.stopped) return;
@@ -61,8 +61,16 @@ export class AntigravitySource implements AgentSource {
         const [account] = this.opts.accounts.setProviderAccounts(this.provider, [{dir:this.opts.origin,detected:{id:this.account,configDir:this.opts.origin,short:'G',name:'Antigravity CLI · Gemini',color:'#5cc97b'}}]);
         this.account = account.id;
       }
-      const present = new Set<string>();
+      // The Hub returns observed conversation history, not a process list.
+      // Show the latest idle observation per workspace and every working session.
+      const latestIdle = new Map<string, Row>();
       for (const row of this.rows) {
+        if (state(row) === 'working') continue;
+        const previous = latestIdle.get(row.workspace);
+        if (!previous || Date.parse(row.last_seen) > Date.parse(previous.last_seen)) latestIdle.set(row.workspace, row);
+      }
+      const present = new Set<string>();
+      for (const row of this.rows.filter(row => state(row) === 'working' || latestIdle.get(row.workspace) === row)) {
         const id = 'antigravity:' + row.session + ':' + hash32(row.workspace); present.add(id);
         const at = Date.parse(row.last_seen);
         this.opts.office.addMain({id,name:'Gemini',provider:this.provider,account:this.account,sessionId:row.session,cwd:row.workspace,role:tr('Antigravity CLI · telemetria do QA Hub'),startedAt:at,status:state(row)});
