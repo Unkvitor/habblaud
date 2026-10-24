@@ -1,0 +1,13 @@
+# Gemini no Habblaud Preview
+
+O preview em `127.0.0.1:4757` conecta o painel Gemini ao CLI Antigravity instalado em `~/.local/bin/agy`. `scripts/preview-native.sh` liga o modo real com `HABBLAUD_NATIVE_GEMINI_REAL=1`, desliga a demonstração e usa `.preview-data/gemini-conversations-real.json`. O original em 4747 e o QA Hub em 4748 não são alterados.
+
+O painel prepara conversas sem gastar cota. Ao enviar, o backend inicia um processo filho `agy` exclusivo daquela mensagem com entrada/saída `stream-json`, modelo `gemini-4-argon-medium`, modo plano e sandbox. O identificador nativo recebido no `init` fica persistido e é passado explicitamente a `--conversation` na próxima mensagem. Deltas chegam ao navegador por SSE; o resultado final substitui o texto parcial sem duplicá-lo. Histórico, título, estado e uso informado pelo CLI sobrevivem à recarga e ao reinício. Falhas bloqueiam novos envios até recuperação manual. O botão Cancelar atua somente no processo filho do turno gerenciado e preserva a resposta parcial para revisão. Não há retry automático.
+
+O endpoint headless do `agy` não oferece canal para decisões de permissão interativas. Ferramentas que exigem aprovação podem ser negadas pelo CLI; o Habblaud não mostra botões de aprovação Gemini nem altera políticas globais. Renomear e excluir atuam apenas nos registros locais deste preview; exclusão exige confirmação e não remove conversas externas.
+
+O personagem no escritório vem da telemetria do QA Hub, não da lista de conversas gerenciadas. O Hub fornece observações históricas, sem identidade de processo. Por workspace, o escritório exibe a observação ociosa mais recente e cada sessão marcada trabalhando. O painel do Hub lista todas as observações. Esses números não representam processos `agy` vivos nem gasto de cota. O `total_tokens` exibido é o total reportado pelo CLI, sem interpretação de cobrança.
+
+Validação local sem IA: `npm test`, `npm run typecheck`, `npm run build`, `node scripts/verify-gemini-layout.mjs` e `node scripts/verify-gemini-scroll.mjs` (os dois últimos precisam do preview em 4757).
+
+Validação real em 2026-10-23: duas mensagens curtas foram enviadas pelo navegador para uma única sessão gerenciada. Ambas responderam `OK`; o segundo turno manteve o mesmo ID nativo, e as quatro mensagens permaneceram completas após recarga. O CLI informou `total_tokens` 7.593 e 9.869, respectivamente; esses valores não informam diretamente o percentual da cota diária. Os scripts `verify-gemini-real.mjs` e `verify-gemini-resume.mjs` criam arquivos sentinela em `.preview-data/` para impedir repetição acidental. `verify-gemini-management.mjs` testa renomear e excluir apenas uma conversa preparada sem chamada ao modelo; `verify-gemini-restart.mjs` é somente leitura.

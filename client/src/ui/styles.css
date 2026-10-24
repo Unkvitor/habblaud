@@ -11168,3 +11168,25 @@ html.is-replay #world {
 .native-approval { border: 1px solid var(--st-waiting); padding: 10px; max-height: 180px; overflow: auto; }
 .native-approval button { margin: 4px; }
 @media (max-width: 600px) { .native-panel { top: 8px; bottom: 8px; } .native-toolbar { flex-wrap: wrap; } }
+/* Keep the Gemini composer inside the native agent panel at browser zoom. */
+.native-panel { top: 8px; bottom: 8px; max-height: calc(100dvh - 16px); min-height: 0; min-width: 0; overflow: hidden; }
+.native-panel > header, .native-panel > [role="tablist"] { flex: none; }
+.native-gemini-area { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; }
+.native-gemini-area[hidden] { display: none; }
+.native-gemini-chat { display: flex; flex: 1 1 auto; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; overflow: hidden; }
+.native-gemini-chat .native-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: auto; }
+.native-gemini-chat > form, .native-gemini-chat > .native-toolbar { flex: none; min-width: 0; }
+.native-gemini-chat > p, .native-gemini-chat > strong { flex: none; }
+@media (max-height: 650px) { .native-gemini-chat > .native-hint { display: none; } }
+
+.native-gemini-options { flex: none; max-height: min(20%, 100px); overflow-y: auto; min-width: 0; font-size: 12px; }
+.native-gemini-options summary { cursor: pointer; padding: 3px 0; }
+.native-gemini-options .native-toolbar { padding: 6px 0; }
+.native-gemini-options input { min-width: 120px; flex: 1; }
+
+.native-gemini-heading { display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap; flex:none; }
+.native-gemini-connection { color:var(--ui-muted); font-size:11px; }
+.native-gemini-chat .native-gemini-rendered { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.native-gemini-chat .ui-md__block { max-width:100%; overflow:hidden; }
+.native-gemini-chat .ui-md__pre { white-space:pre; overflow-wrap:normal; overflow-x:auto; max-width:100%; }
+.native-gemini-copy { margin-top:6px; font-size:11px; }

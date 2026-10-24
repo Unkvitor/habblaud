@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import os from 'node:os';
+import {chromium} from 'playwright-core';
+const browser=await chromium.launch({headless:true,executablePath:os.homedir()+'/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome',args:['--no-sandbox']});
+try{
+ const page=await browser.newPage({viewport:{width:1280,height:800}});
+ await page.goto('http://127.0.0.1:4757/',{waitUntil:'domcontentloaded'});
+ await page.locator('.native-toggle').click();await page.locator('[role=tab]').nth(1).click();
+ const list=()=>page.request.get('http://127.0.0.1:4757/api/native-gemini/sessions').then(r=>r.json()).then(x=>x.data);
+ const before=await list();assert.equal(before.length,1);const real=before[0];assert.ok(real.nativeId);
+ await page.locator('.native-gemini-options summary').click();
+ page.once('dialog',dialog=>dialog.accept('QA Gemini validado'));
+ await page.locator('.native-gemini-options button').first().click();
+ await page.waitForFunction(id=>document.querySelector(`.native-gemini-chat select option[value="${id}"]`)?.textContent.includes('QA Gemini validado'),real.id);
+ await page.reload({waitUntil:'domcontentloaded'});await page.locator('.native-toggle').click();await page.locator('[role=tab]').nth(1).click();
+ await page.waitForFunction(id=>document.querySelector(`.native-gemini-chat select option[value="${id}"]`)?.textContent.includes('QA Gemini validado'),real.id);
+ await page.locator('.native-gemini-chat > .native-toolbar button').click();
+ await page.waitForFunction(id=>{const v=document.querySelector('.native-gemini-chat select')?.value;return v&&v!==id},real.id);
+ const draftId=await page.locator('.native-gemini-chat select').inputValue();
+ const draft=(await list()).find(s=>s.id===draftId);assert.equal(draft.status,'idle');assert.ok(!draft.nativeId);
+ await page.locator('.native-gemini-options summary').click();
+ page.once('dialog',dialog=>dialog.accept());
+ await page.locator('.native-gemini-options button').nth(1).click();
+ await page.waitForFunction(id=>![...document.querySelector('.native-gemini-chat select')?.options||[]].some(o=>o.value===id),draftId);
+ const after=await list();assert.deepEqual(after.map(s=>s.id),[real.id]);assert.equal(after[0].title,'QA Gemini validado');
+ const messages=(await (await page.request.get('http://127.0.0.1:4757/api/native-gemini/history?id='+real.id)).json()).data;assert.equal(messages.length,4);
+ await page.locator('.native-panel > header button').click();
+ await page.waitForTimeout(500);
+ await page.screenshot({path:'.preview-data/gemini-office-final-afterload.png'});
+ console.log('PASS real browser rename, persistence, confirmed local-only draft deletion, preserved four-message native history; no model call');
+ await page.close();
+}finally{await browser.close()}

@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {readFileSync,existsSync,writeFileSync} from 'node:fs';
+import os from 'node:os';
+import {chromium} from 'playwright-core';
+const first=JSON.parse(readFileSync('.preview-data/gemini-real-validation.json','utf8'));
+assert.equal(first.state,'completed');assert.ok(first.nativeId);
+const record='.preview-data/gemini-resume-validation.json';
+if(existsSync(record))throw new Error('A resume validation attempt is already recorded; refusing to resend.');
+const browser=await chromium.launch({headless:true,executablePath:os.homedir()+'/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome',args:['--no-sandbox']});
+try{
+ const page=await browser.newPage({viewport:{width:1280,height:800}});
+ await page.goto('http://127.0.0.1:4757/',{waitUntil:'domcontentloaded'});
+ await page.locator('.native-toggle').click();await page.locator('[role=tab]').nth(1).click();
+ await page.waitForFunction(id=>[...document.querySelector('.native-gemini-chat select')?.options||[]].some(o=>o.value===id),first.sessionId);
+ await page.locator('.native-gemini-chat select').selectOption(first.sessionId);
+ await page.waitForFunction(()=>document.querySelectorAll('[data-gemini-message]').length===2);
+ await page.locator('.native-gemini-chat textarea').fill('Qual foi a resposta anterior? Responda so com ela.');
+ writeFileSync(record,JSON.stringify({state:'sent',sessionId:first.sessionId,at:new Date().toISOString()}),{mode:0o600});
+ const reply=page.waitForResponse(r=>r.url().endsWith('/api/native-gemini/send'),{timeout:145000});
+ await page.locator('.native-gemini-chat button[type=submit]').click();
+ const response=await reply;
+ const sessions=(await (await page.request.get('http://127.0.0.1:4757/api/native-gemini/sessions')).json()).data;
+ const session=sessions.find(s=>s.id===first.sessionId);
+ const history=(await (await page.request.get('http://127.0.0.1:4757/api/native-gemini/history?id='+first.sessionId)).json()).data;
+ const result={state:response.ok()?'completed':'error',httpStatus:response.status(),sessionId:first.sessionId,nativeId:session?.nativeId,sameNativeId:session?.nativeId===first.nativeId,status:session?.status,usage:session?.usage,messageCount:history.length,assistantComplete:history.at(-1)?.role==='assistant'&&history.at(-1)?.complete===true,responseText:history.at(-1)?.role==='assistant'?history.at(-1).text.slice(0,80):''};
+ writeFileSync(record,JSON.stringify(result,null,2),{mode:0o600});console.log(JSON.stringify(result));
+ assert.ok(response.ok());assert.ok(result.sameNativeId);assert.equal(result.messageCount,4);assert.ok(result.assistantComplete);assert.equal(result.responseText.trim(),'OK');
+ await page.reload({waitUntil:'domcontentloaded'});await page.locator('.native-toggle').click();await page.locator('[role=tab]').nth(1).click();
+ await page.waitForFunction(()=>document.querySelectorAll('[data-gemini-message]').length===4);
+ await page.screenshot({path:'.preview-data/gemini-real-chat-final.png'});
+ console.log('PASS real Gemini conversation resumed with same native ID and four persisted messages');
+ await page.close();
+}finally{await browser.close()}

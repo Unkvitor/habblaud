@@ -43,8 +43,8 @@ export async function mountNativeCodex(root: HTMLElement): Promise<void> {
     state, hint, older, history, approvals, form, hub
   );
 
-  const geminiArea = h('div', { hidden: true });
-  mountGeminiPreview(geminiArea);
+  const geminiArea = h('div', { class: 'native-gemini-area', hidden: true });
+  const gemini = mountGeminiPreview(geminiArea);
 
   const tabs = h('div', {
     class: 'native-toolbar',
@@ -69,6 +69,7 @@ export async function mountNativeCodex(root: HTMLElement): Promise<void> {
   const selectProvider = (provider: 'codex' | 'gemini') => {
     codexArea.hidden = provider !== 'codex';
     geminiArea.hidden = provider !== 'gemini';
+    if(provider==='gemini'&&!panel.hidden)gemini.activate();else gemini.deactivate();
     codexTab.setAttribute('aria-selected', String(provider === 'codex'));
     geminiTab.setAttribute('aria-selected', String(provider === 'gemini'));
   };
@@ -154,11 +155,12 @@ export async function mountNativeCodex(root: HTMLElement): Promise<void> {
     hub.replaceChildren(h('strong', { text: tr('Gemini / Antigravity · QA Agent Hub') }));
     if (!data.online) { hub.append(h('p', { text: tr('Hub indisponível; telemetria não confirmada.') })); return; }
     const rows = data.antigravity.sessions;
+    hub.append(h('p', { text: tr('{0} sess\u00f5es observadas no Hub; o escrit\u00f3rio mostra a mais recente ociosa por workspace e as que trabalham.', [rows.length]) }));
     if (!rows.length) hub.append(h('p', { text: tr('Nenhum evento de sessão recebido pelo Hub.') }));
     for (const row of rows) hub.append(h('p', { text: `${row.model || 'Antigravity'} · ${row.status} · ${row.event} · ${row.session.slice(0, 12)} · ${row.last_seen}` }));
   };
   const hide = () => {
-    panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); source?.close(); source = undefined;
+    panel.hidden = true; gemini.deactivate(); toggle.setAttribute('aria-expanded', 'false'); source?.close(); source = undefined;
     if (polling) clearInterval(polling); toggle.focus();
   };
   close.onclick = hide;
@@ -166,6 +168,7 @@ export async function mountNativeCodex(root: HTMLElement): Promise<void> {
   toggle.onclick = () => {
     if (!panel.hidden) return hide();
     panel.hidden = false; toggle.setAttribute('aria-expanded', 'true');
+    if(!geminiArea.hidden)gemini.activate();
     selected = localStorage.getItem('habblaud-native-thread') ?? '';
     void loadThreads().then(choose).then(loadHub).catch(report);
     source = new EventSource('/api/native-codex/events');

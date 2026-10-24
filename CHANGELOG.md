@@ -10,6 +10,14 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Gemini / Antigravity no preview
+
+- O chat Gemini usa o CLI `agy` real com `stream-json`, ID nativo explícito, histórico local persistido e retomada sem reenvio automático. O preview separa dados reais da demonstração e mantém modo plano e sandbox.
+- O painel agora cabe na tela a 100%, 125% e 150%, inclusive no celular; o histórico rola independentemente, respeita a leitura manual e conserva o campo de envio. Respostas completas usam o renderizador Markdown existente, com cópia de resposta e código.
+- O escritório mostra a observação Gemini ociosa mais recente por workspace e todas as sessões trabalhando. O painel do Hub preserva a lista completa de sessões observadas, que não é contagem de processos.
+- O launcher rejeita IDs nativos divergentes, limita a resposta e encerra apenas seu processo filho em timeout ou cancelamento solicitado pelo usuário. O headless do `agy` não oferece aprovação interativa; nenhuma aprovação automática foi ativada.
+
+
 ### Corrigido
 
 - A criação de sessões Codex gerenciadas aceita subdiretório isolado validado por caminho real.
@@ -18,9 +26,7 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
-- Sessões reais do Antigravity informadas pelo QA Hub agora entram no snapshot/SSE e aparecem como
-  personagens Gemini no escritório, na sala do workspace correspondente. Sessões ociosas ou sem sinal
-  recente permanecem visíveis com modelo, provedor e última observação; nenhuma CLI é iniciada.
+- Sessões reais do Antigravity informadas pelo QA Hub entram no snapshot/SSE. O escritório exibe um personagem Gemini ocioso por workspace, escolhendo a observação mais recente, além das sessões trabalhando; o histórico integral continua consultável no Hub.
 
 ### Adicionado
 
