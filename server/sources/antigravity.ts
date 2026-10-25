@@ -66,7 +66,9 @@ export class AntigravitySource implements AgentSource {
     // A persisted managed conversation is local evidence, not Hub telemetry. It is
     // deliberately retained across reboot so its character does not depend on a
     // former agy process or on the Hub having restarted first.
-    for (const row of this.managedRows()) observations.set(row.session, row);
+    // O Hub é a fonte de telemetria quando conhece a mesma conversa; o estado
+    // persistido local serve apenas como fallback durante sua indisponibilidade.
+    for (const row of this.managedRows()) if (!observations.has(row.session)) observations.set(row.session, row);
     const rows = [...observations.values()];
     if (rows.length) {
       const [account] = this.opts.accounts.setProviderAccounts(this.provider, [{dir:this.opts.origin,detected:{id:this.account,configDir:this.opts.origin,short:'G',name:'Antigravity CLI · Gemini',color:'#5cc97b'}}]);

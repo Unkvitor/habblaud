@@ -70,6 +70,12 @@ describe('office representation versus Hub history', () => {
     source.setManagedSessions([{id:'0eb3b8ce-f5f8-4b08-abce-25d6b5a1d65a',cwd:workspace,nativeId:session.session,status:'idle',createdAt:Date.now()}]);
     expect(office.list()[0].status).toBe('idle');
   });
+  it('prefers live Hub telemetry over the persisted fallback for the same native session', async () => {
+    const {office,source}=setup();
+    source.setManagedSessions([{id:'0eb3b8ce-f5f8-4b08-abce-25d6b5a1d65a',cwd:workspace,nativeId:session.session,model:session.model,status:'idle',createdAt:Date.now()}]);
+    await source.poll();
+    expect(office.list()[0].telemetry).toMatchObject({event:'Stop',connected:true});
+  });
   it('keeps the workspace character identity when the latest conversation changes',async()=>{
     const {office,source,set}=setup();await source.poll();
     const before=office.list()[0].id;
