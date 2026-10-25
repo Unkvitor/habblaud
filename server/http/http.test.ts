@@ -14,6 +14,7 @@ import { createRequestGuard, hostAllowed, hostnameOf, isLoopbackHost, originAllo
 import { Hub } from './sse';
 import { createStaticHandler, IMMUTABLE, REVALIDATE } from './static';
 import { QaTaskStore } from '../tasks/store';
+import { QaRoleStore } from '../tasks/roles';
 import { SupervisedExecutor } from '../tasks/executor';
 
 setQuiet(true);
@@ -135,6 +136,25 @@ describe('API HTTP', () => {
     expect(snapshot.agents.find((agent) => agent.id === '.codex:marcelo')?.tasks).toContainEqual({ id: task.id, title: 'Planejar regressão', status: 'assigned' });
     const invalidAssignee = await fetch(`${env.base}/api/qa-tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description: 'Não pode', assigneeId: '.claude:1' }) });
     expect(invalidAssignee.status).toBe(400);
+  });
+
+  it('permite configurar papéis QA apenas para agentes existentes, sem alterar suas sessões', async () => {
+    await env.close(); env.cleanup();
+    const roles = new QaRoleStore(null, () => 10);
+    env = await start({ qaRoles: roles });
+    env.office.addMain({ id: '.codex:marcelo', provider: 'codex', account: '.codex', sessionId: 'thread-original', cwd: '/p/loja', role: 'Agente principal', startedAt: 1, status: 'idle' });
+    const id = encodeURIComponent('.codex:marcelo');
+    expect((await fetch(`${env.base}/api/qa-roles`)).status).toBe(200);
+    const assigned = await fetch(`${env.base}/api/qa-roles/${id}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ role: 'coordinator' }) });
+    expect(assigned.status).toBe(200);
+    expect(((await assigned.json()) as any).assignment).toMatchObject({ agentId: '.codex:marcelo', role: 'coordinator' });
+    expect(roles.list()).toHaveLength(1);
+    expect(env.office.get('.codex:marcelo')?.sessionId).toBe('thread-original');
+    expect(env.office.get('.codex:marcelo')?.role).toBe('Agente principal');
+    expect((await fetch(`${env.base}/api/qa-roles/${encodeURIComponent('.claude:1')}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ role: 'coordinator' }) })).status).toBe(400);
+    expect((await fetch(`${env.base}/api/qa-roles/${id}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ role: 'superuser' }) })).status).toBe(400);
+    expect((await fetch(`${env.base}/api/qa-roles/${id}`, { method: 'DELETE', headers: JSON_HEADERS })).status).toBe(200);
+    expect(roles.list()).toEqual([]);
   });
 
   it('executa o ciclo simulado pela API sem tocar em agentes', async () => {

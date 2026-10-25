@@ -17,7 +17,15 @@ export function allowedQaTransitions(status: TaskStatus): readonly TaskStatus[] 
 interface SimulatedExecution { id: string; taskId: string; executorId: string; planHash: string; mode?: 'simulated'|'real'; scope?: string; authorizationKind?: 'simulated'|'human'; state: string; checkpoint?: string; result?: string; error?: string; events: Array<{ at: number; type: string; detail?: string }>; }
 type TaskResponse = { tasks?: QaTask[]; task?: QaTask };
 type ExecutionResponse = { executions?: SimulatedExecution[]; execution?: SimulatedExecution; realAvailable?: boolean };
-async function request<T extends TaskResponse | ExecutionResponse = TaskResponse>(path: string, init?: RequestInit): Promise<T> {
+type QaRoleId = 'coordinator' | 'automation_engineer' | 'investigator_reviewer';
+interface RoleAssignment { agentId: string; role: QaRoleId; updatedAt: number }
+type RoleResponse = { roles?: RoleAssignment[]; assignment?: RoleAssignment; removed?: boolean };
+const ROLE_LABELS: Record<QaRoleId, string> = {
+  coordinator: tr('Coordenador de QA'),
+  automation_engineer: tr('Engenheiro de automação'),
+  investigator_reviewer: tr('Investigador e revisor'),
+};
+async function request<T extends TaskResponse | ExecutionResponse | RoleResponse = TaskResponse>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { cache: 'no-store', ...init });
   const data = await response.json() as T & { error?: string };
   if (!response.ok) throw new Error(data.error ?? tr('Falha ao atualizar tarefas.'));
@@ -34,6 +42,10 @@ export class QaTasksPanel {
   private readonly assignee: HTMLSelectElement;
   private readonly parent: HTMLSelectElement;
   private readonly dependencies: HTMLSelectElement;
+  private readonly roleAgent: HTMLSelectElement;
+  private readonly roleChoice: HTMLSelectElement;
+  private readonly rolesList: HTMLElement;
+  private roles: RoleAssignment[] = [];
   private open = false;
   private loading = false;
 
@@ -47,8 +59,18 @@ export class QaTasksPanel {
     this.dependencies = h('select', { attrs: { 'aria-label': tr('Dependências',), multiple: 'multiple', size: 3 } });
     const create = h('button', { class: 'ui-btn ui-btn--primary', type: 'submit', text: tr('Criar tarefa') });
     const form = h('form', { class: 'qa-tasks__form', on: { submit: (event: Event) => { event.preventDefault(); void this.create(); } } }, this.description, this.assignee, this.parent, this.dependencies, create);
+    this.roleAgent = h('select', { attrs: { 'aria-label': tr('Agente para atribuir função') }, on: { change: () => this.syncRoleChoice() } });
+    this.roleChoice = h('select', { attrs: { 'aria-label': tr('Função de QA') } },
+      h('option', { text: tr('Sem função definida'), attrs: { value: '' } }),
+      ...Object.entries(ROLE_LABELS).map(([value, label]) => h('option', { text: label, attrs: { value } })));
+    this.rolesList = h('ul', { class: 'qa-tasks__list' });
+    const roleForm = h('form', { class: 'qa-tasks__form', on: { submit: (event: Event) => { event.preventDefault(); void this.saveRole(); } } },
+      h('strong', { text: tr('Funções da equipe QA') }),
+      h('p', { class: 'native-hint', text: tr('Funções são descritivas: não concedem permissões nem iniciam agentes.') }),
+      this.roleAgent, this.roleChoice,
+      h('button', { class: 'ui-btn', type: 'submit', text: tr('Salvar função') }));
     this.list = h('ol', { class: 'qa-tasks__list' });
-    this.el = h('section', { class: 'ui-panel qa-tasks', hidden: true, attrs: { 'aria-label': tr('Gestão de tarefas QA') } }, h('header', {}, h('strong', { text: tr('Tarefas QA') }), close), h('p', { class: 'native-hint', text: tr('Ações manuais não enviam prompts nem executam agentes.') }), form, this.status, this.list);
+    this.el = h('section', { class: 'ui-panel qa-tasks', hidden: true, attrs: { 'aria-label': tr('Gestão de tarefas QA') } }, h('header', {}, h('strong', { text: tr('Tarefas QA') }), close), h('p', { class: 'native-hint', text: tr('Ações manuais não enviam prompts nem executam agentes.') }), form, roleForm, this.rolesList, this.status, this.list);
     ctx.store.on('snapshot', () => { if (this.open) void this.load(); });
   }
 
@@ -59,15 +81,41 @@ export class QaTasksPanel {
   private agents(): void {
     const agents = (this.ctx.store.snapshot?.agents ?? []).filter((agent) => agent.kind === 'main' && (agent.provider === 'codex' || agent.provider === 'antigravity'));
     const selected = this.assignee.value;
+    const selectedRoleAgent = this.roleAgent.value;
     this.assignee.replaceChildren(...agents.map((agent) => h('option', { text: `${agent.name} · ${agent.provider === 'codex' ? 'Codex' : 'Gemini'}`, attrs: { value: agent.id } })));
+    this.roleAgent.replaceChildren(...agents.map((agent) => h('option', { text: agent.name, attrs: { value: agent.id } })));
     if (agents.some((agent) => agent.id === selected)) this.assignee.value = selected;
+    if (agents.some((agent) => agent.id === selectedRoleAgent)) this.roleAgent.value = selectedRoleAgent;
+    this.syncRoleChoice();
   }
   private async load(): Promise<void> {
     if (this.loading) return;
-    this.loading = true; this.agents();
-    try { const tasks=(await request('/api/qa-tasks')).tasks ?? []; this.taskChoices(tasks); const executionData=await request<ExecutionResponse>('/api/qa-executions'); this.render(tasks, executionData.executions ?? [], !!executionData.realAvailable); this.status.textContent = ''; }
+    this.loading = true;
+    try { const roleData = await request<RoleResponse>('/api/qa-roles'); this.roles = roleData.roles ?? []; this.agents(); this.renderRoles(); const tasks=(await request('/api/qa-tasks')).tasks ?? []; this.taskChoices(tasks); const executionData=await request<ExecutionResponse>('/api/qa-executions'); this.render(tasks, executionData.executions ?? [], !!executionData.realAvailable); this.status.textContent = ''; }
     catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao carregar tarefas.'); }
     finally { this.loading = false; }
+  }
+  private syncRoleChoice(): void {
+    this.roleChoice.value = this.roles.find((r) => r.agentId === this.roleAgent.value)?.role ?? '';
+  }
+  private renderRoles(): void {
+    const agents = this.ctx.store.snapshot?.agents ?? [];
+    this.rolesList.replaceChildren(...this.roles.map((assignment) => {
+      const found = agents.find((agent) => agent.id === assignment.agentId);
+      return h('li', { text: `${found?.name ?? assignment.agentId} · ${ROLE_LABELS[assignment.role]}` });
+    }));
+    if (!this.roles.length) this.rolesList.append(h('li', { text: tr('Nenhuma função de QA atribuída.') }));
+  }
+  private async saveRole(): Promise<void> {
+    const agentId = this.roleAgent.value;
+    if (!agentId) return;
+    const role = this.roleChoice.value;
+    try {
+      await request<RoleResponse>(`/api/qa-roles/${encodeURIComponent(agentId)}`, role ?
+        { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) } :
+        { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+      await this.load();
+    } catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao salvar função de QA.'); }
   }
   private taskChoices(tasks: QaTask[]): void { const parent=this.parent.value; const deps=[...this.dependencies.selectedOptions].map(x=>x.value); this.parent.replaceChildren(h('option',{text:tr('Sem tarefa principal'),attrs:{value:''}}),...tasks.map(t=>h('option',{text:t.description,attrs:{value:t.id}}))); this.dependencies.replaceChildren(...tasks.map(t=>h('option',{text:t.description,attrs:{value:t.id}}))); this.parent.value=parent; for(const o of this.dependencies.options)o.selected=deps.includes(o.value); }
   private render(tasks: QaTask[], executions: SimulatedExecution[] = [], realAvailable = false): void {

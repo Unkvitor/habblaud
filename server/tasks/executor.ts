@@ -16,7 +16,17 @@ export class SupervisedExecutor {
   private get now(){return this.opts.now??Date.now;} private get max(){return this.opts.maxConcurrency??1;} private get perAgent(){return this.opts.maxPerAgent??1;}
   load():void { const file=this.opts.file;if(!file)return;try{const raw=JSON.parse(readFileSync(file,'utf8')) as Partial<Persisted>;if(raw.version!==1||!Array.isArray(raw.executions))throw Error('bad');for(const x of raw.executions){if(!this.valid(x))throw Error('bad');this.byId.set(x.id,this.copy(x));this.byKey.set(x.idempotencyKey,x.id);}this.recover();}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')this.corrupt=true;} }
   list():SupervisedExecution[]{return [...this.byId.values()].map(x=>this.copy(x));}
-  enqueue(input:Pick<SupervisedExecution,'taskId'|'executorId'|'threadId'|'idempotencyKey'|'planHash'>):SupervisedExecution{this.writable();const prior=this.byKey.get(input.idempotencyKey);if(prior)return this.copy(this.byId.get(prior)!);if(this.list().some(x=>x.threadId===input.threadId&&ACTIVE.has(x.state)))throw new ExecutionError('conflict','thread ja possui execucao ativa');const at=this.now();const x:SupervisedExecution={id:`exec-${randomUUID()}`,...input,state:'awaiting_authorization',updatedAt:at,events:[{at,type:'created'}]};this.byId.set(x.id,x);this.byKey.set(x.idempotencyKey,x.id);this.save();return this.copy(x);}
+  enqueue(input:Pick<SupervisedExecution,'taskId'|'executorId'|'threadId'|'idempotencyKey'|'planHash'> & Pick<Partial<SupervisedExecution>,'mode'|'scope'>):SupervisedExecution{
+    this.writable();
+    const prior=this.byKey.get(input.idempotencyKey);
+    if(prior){
+      const existing=this.byId.get(prior)!;
+      if(existing.taskId!==input.taskId || existing.executorId!==input.executorId || existing.threadId!==input.threadId ||
+         existing.planHash!==input.planHash || (existing.mode??'simulated')!==(input.mode??'simulated') ||
+         (existing.scope??'')!==(input.scope??'')) throw new ExecutionError('conflict','chave de idempotencia reutilizada com plano diferente');
+      return this.copy(existing);
+    }
+if(this.list().some(x=>x.threadId===input.threadId&&ACTIVE.has(x.state)))throw new ExecutionError('conflict','thread ja possui execucao ativa');const at=this.now();const x:SupervisedExecution={id:`exec-${randomUUID()}`,...input,state:'awaiting_authorization',updatedAt:at,events:[{at,type:'created'}]};this.byId.set(x.id,x);this.byKey.set(x.idempotencyKey,x.id);this.save();return this.copy(x);}
   authorize(id:string,actor:string,planHash:string):SupervisedExecution{this.authorizeWith(id,actor,planHash,'simulated');return this.copy(this.required(id));}
   authorizeHuman(id:string,actor:string,planHash:string):SupervisedExecution{this.authorizeWith(id,actor,planHash,'human');return this.copy(this.required(id));}
   start(id:string):SupervisedExecution{this.writable();const x=this.required(id);if(x.state!=='ready')throw new ExecutionError('invalid','execucao nao esta pronta');const live=this.list().filter(y=>y.state==='running');if(live.length>=this.max||live.filter(y=>y.executorId===x.executorId).length>=this.perAgent)throw new ExecutionError('conflict','limite de concorrencia atingido');x.state='running';x.startedAt=x.updatedAt=this.now();this.event(x,'started');this.save();return this.copy(x);}

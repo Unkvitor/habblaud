@@ -2,6 +2,25 @@
 // As lacunas {0}, {1}... (e as nomeadas, como {sala}) precisam aparecer na tradução, em qualquer ordem.
 // Chave ausente = o texto fica em PT. `npm run i18n:check` lista os textos sem tradução e as chaves que sobraram.
 export const EN: Readonly<Record<string, string>> = {
+  // QA roles — server/tasks/roles.ts + client/src/ui/qa-tasks.ts
+  "Coordenador de QA": "QA coordinator",
+  "Engenheiro de automação": "Automation engineer",
+  "Investigador e revisor": "Investigator and reviewer",
+  "Agente para atribuir função": "Agent to assign a role",
+  "Função de QA": "QA role",
+  "Sem função definida": "No role assigned",
+  "Funções da equipe QA": "QA team roles",
+  "Funções são descritivas: não concedem permissões nem iniciam agentes.": "Roles are descriptive: they grant no permissions and do not start agents.",
+  "Salvar função": "Save role",
+  "Nenhuma função de QA atribuída.": "No QA roles assigned.",
+  "Falha ao salvar função de QA.": "Failed to save QA role.",
+  "ID de agente inválido": "Invalid agent ID",
+  "agente QA não encontrado no escritório": "QA agent not found in the office",
+  "papéis QA só são gerenciados pelo próprio computador (http://localhost)": "QA roles can only be managed from this computer (http://localhost)",
+  "agente ou papel QA inválido": "Invalid QA agent or role",
+  "limite de papéis QA atingido": "QA role limit reached",
+  "arquivo de papéis QA inválido; gravações bloqueadas": "Invalid QA roles file; writes blocked",
+
   // client/src/main.ts
   "Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo.": "Pixel-art virtual office that shows, in real time, what your Claude Code agents are doing.",
 

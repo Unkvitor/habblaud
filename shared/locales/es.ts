@@ -2,6 +2,25 @@
 // As lacunas {0}, {1}... (e as nomeadas, como {sala}) precisam aparecer na tradução, em qualquer ordem.
 // Chave ausente = o texto fica em PT. `npm run i18n:check` lista os textos sem tradução e as chaves que sobraram.
 export const ES: Readonly<Record<string, string>> = {
+  // QA roles — server/tasks/roles.ts + client/src/ui/qa-tasks.ts
+  "Coordenador de QA": "Coordinador de QA",
+  "Engenheiro de automação": "Ingeniero de automatización",
+  "Investigador e revisor": "Investigador y revisor",
+  "Agente para atribuir função": "Agente al que asignar una función",
+  "Função de QA": "Función de QA",
+  "Sem função definida": "Sin función asignada",
+  "Funções da equipe QA": "Funciones del equipo de QA",
+  "Funções são descritivas: não concedem permissões nem iniciam agentes.": "Las funciones son descriptivas: no conceden permisos ni inician agentes.",
+  "Salvar função": "Guardar función",
+  "Nenhuma função de QA atribuída.": "No hay funciones de QA asignadas.",
+  "Falha ao salvar função de QA.": "No se pudo guardar la función de QA.",
+  "ID de agente inválido": "ID de agente no válido",
+  "agente QA não encontrado no escritório": "Agente QA no encontrado en la oficina",
+  "papéis QA só são gerenciados pelo próprio computador (http://localhost)": "Las funciones de QA solo se gestionan desde este equipo (http://localhost)",
+  "agente ou papel QA inválido": "Agente o función de QA no válido",
+  "limite de papéis QA atingido": "Límite de funciones de QA alcanzado",
+  "arquivo de papéis QA inválido; gravações bloqueadas": "Archivo de funciones QA no válido; escrituras bloqueadas",
+
   // client/src/main.ts
   "Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo.": "Oficina virtual en pixel art que muestra, en tiempo real, lo que están haciendo tus agentes de Claude Code.",
 

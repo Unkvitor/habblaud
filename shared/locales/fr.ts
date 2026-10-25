@@ -2,6 +2,25 @@
 // As lacunas {0}, {1}... (e as nomeadas, como {sala}) precisam aparecer na tradução, em qualquer ordem.
 // Chave ausente = o texto fica em PT. `npm run i18n:check` lista os textos sem tradução e as chaves que sobraram.
 export const FR: Readonly<Record<string, string>> = {
+  // QA roles — server/tasks/roles.ts + client/src/ui/qa-tasks.ts
+  "Coordenador de QA": "Coordinateur QA",
+  "Engenheiro de automação": "Ingénieur en automatisation",
+  "Investigador e revisor": "Enquêteur et réviseur",
+  "Agente para atribuir função": "Agent auquel attribuer un rôle",
+  "Função de QA": "Rôle QA",
+  "Sem função definida": "Aucun rôle attribué",
+  "Funções da equipe QA": "Rôles de l’équipe QA",
+  "Funções são descritivas: não concedem permissões nem iniciam agentes.": "Les rôles sont descriptifs : ils ne confèrent aucune autorisation et ne lancent aucun agent.",
+  "Salvar função": "Enregistrer le rôle",
+  "Nenhuma função de QA atribuída.": "Aucun rôle QA attribué.",
+  "Falha ao salvar função de QA.": "Impossible d’enregistrer le rôle QA.",
+  "ID de agente inválido": "ID d’agent invalide",
+  "agente QA não encontrado no escritório": "Agent QA introuvable dans le bureau",
+  "papéis QA só são gerenciados pelo próprio computador (http://localhost)": "Les rôles QA ne sont gérés que depuis cet ordinateur (http://localhost)",
+  "agente ou papel QA inválido": "Agent ou rôle QA invalide",
+  "limite de papéis QA atingido": "Limite de rôles QA atteinte",
+  "arquivo de papéis QA inválido; gravações bloqueadas": "Fichier des rôles QA invalide ; écritures bloquées",
+
   // client/src/main.ts
   "Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo.": "Bureau virtuel en pixel art qui montre, en temps réel, ce que font vos agents Claude Code.",
 

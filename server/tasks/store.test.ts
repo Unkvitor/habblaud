@@ -56,6 +56,21 @@ describe('QaTaskStore', () => {
     } finally { tmp.cleanup(); }
   });
 
+  it('não sobrescreve tarefas quando o formato ou uma entrada persistida é inválida', () => {
+    const tmp = tempDir();
+    try {
+      const file = join(tmp.dir, 'qa-tasks.json');
+      for (const content of ['{"version":2,"tasks":[]}', '{"version":1,"tasks":[{"id":"qa-invalid"}]}']) {
+        writeFileSync(file, content);
+        const store = new QaTaskStore(file);
+        store.load();
+        expect(store.list()).toEqual([]);
+        expect(() => store.create({ description: 'Nova demanda', assigneeId: 'codex:marcelo' })).toThrow(QaTaskError);
+        expect(readFileSync(file, 'utf8')).toBe(content);
+      }
+    } finally { tmp.cleanup(); }
+  });
+
   it('registra proposta e decisão humana sem criar execução', () => {
     const tasks = new QaTaskStore(null, () => 10);
     const task = tasks.create({ description: 'Revisar evidência', assigneeId: 'codex:marcelo' });

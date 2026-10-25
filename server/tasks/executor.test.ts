@@ -10,6 +10,23 @@ describe('SupervisedExecutor', () => {
     expect(q.enqueue({taskId:'t',executorId:'marcelo',threadId:'thread-a',idempotencyKey:'k',planHash:'p'}).id).toBe(a.id);
     expect(()=>q.authorize(a.id,'','p')).toThrow(ExecutionError); expect(q.authorize(a.id,'simulated:user-1','p').state).toBe('ready'); expect(q.start(a.id).state).toBe('running'); q.recover(); expect(q.list()[0].state).toBe('interrupted');
   });
+  it('rejeita reutilizar a mesma chave de idempotência com plano ou thread diferentes, inclusive após restart', () => {
+    const tmp = tempDir();
+    try {
+      const file = join(tmp.dir, 'qa-executions.json');
+      const q = new SupervisedExecutor({ file });
+      const input = { taskId: 'qa-1', executorId: 'codex:marcelo', threadId: 'thread-1', idempotencyKey: 'once', planHash: 'hash-v1', mode: 'real' as const, scope: 'Leia AGENTS.md' };
+      const first = q.enqueue(input);
+      expect(q.enqueue(input).id).toBe(first.id);
+      expect(() => q.enqueue({ ...input, planHash: 'hash-v2' })).toThrow(ExecutionError);
+      expect(() => q.enqueue({ ...input, threadId: 'thread-2' })).toThrow(ExecutionError);
+      expect(() => q.enqueue({ ...input, scope: 'Execute comandos' })).toThrow(ExecutionError);
+      const restored = new SupervisedExecutor({ file });
+      restored.load();
+      expect(() => restored.enqueue({ ...input, executorId: 'codex:outro' })).toThrow(ExecutionError);
+      expect(restored.enqueue(input).id).toBe(first.id);
+    } finally { tmp.cleanup(); }
+  });
   it('simula checkpoint, falha e cancelamento sem processo externo', () => {
     const q=new SupervisedExecutor(); const sim=new DeterministicSimulator(q);
     const a=q.enqueue({taskId:'a',executorId:'marcelo',threadId:'a',idempotencyKey:'a',planHash:'p'});q.authorize(a.id,'simulated:test','p');expect(sim.run(a.id).result).toBe('simulated:ok'); expect(q.list()[0].events.map(event => event.type)).toEqual(['created', 'authorized', 'started', 'checkpoint', 'completed']);

@@ -23,6 +23,8 @@ import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
 import { HOST_WAIT_MS } from '../host-wait';
 import { handleQaTasks } from '../tasks/http';
+import { handleQaRoles } from '../tasks/roles-http';
+import type { QaRoleStore } from '../tasks/roles';
 import type { QaTaskStore } from '../tasks/store';
 import type { SupervisedExecutor } from '../tasks/executor';
 import type { RealCodexExecutor } from '../tasks/real-executor';
@@ -101,6 +103,7 @@ export interface ApiDeps {
   world?: (req: IncomingMessage, res: ServerResponse, url: URL) => void;
   /** Tarefas internas persistidas; não executam agentes. */
   qaTasks?: QaTaskStore;
+  qaRoles?: QaRoleStore;
   qaExecutions?: SupervisedExecutor;
   qaRealExecutions?: RealCodexExecutor;
 }
@@ -418,6 +421,12 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       if (!deps.qaTasks) sendJson(res, 404, { error: tr('rota desconhecida') });
       else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('tarefas internas só são gerenciadas pelo próprio computador (http://localhost)')) });
       else handleQaTasks(req, res, path, deps.qaTasks, (id) => office.get(id));
+      return true;
+    }
+    if (path === '/api/qa-roles' || path.startsWith('/api/qa-roles/')) {
+      if (!deps.qaRoles) sendJson(res, 404, { error: tr('rota desconhecida') });
+      else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('papéis QA só são gerenciados pelo próprio computador (http://localhost)')) });
+      else handleQaRoles(req, res, path, deps.qaRoles, (id) => office.get(id));
       return true;
     }
     if (path === '/api/qa-executions' || path.startsWith('/api/qa-executions/')) {

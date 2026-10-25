@@ -10,7 +10,14 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Corrigido
+
+- Arquivo de tarefas QA com versão desconhecida, itens inválidos ou IDs duplicados agora bloqueia gravações em vez de descartar silenciosamente registros recuperáveis.
+- Idempotência do executor supervisionado recusa o reuso da mesma chave com um plano, escopo, agente ou thread diferente, inclusive após recarregar a fila.
+
 ### Adicionado
+
+- Perfis informativos de QA atribuídos manualmente aos IDs originais de agentes Codex e Antigravity, persistidos separadamente e editáveis no painel Tarefas QA, sem alterar sessões ou conceder permissões.
 
 - Restauração genérica de sessões Codex nomeadas: identidades persistidas com rollout válido reaparecem como ociosas mesmo quando locks de processo não sobrevivem ao reboot.
 

@@ -63,9 +63,16 @@ export class QaTaskStore {
   load(): void {
     if (!this.file) return;
     try {
-      const raw = JSON.parse(readFileSync(this.file, 'utf8')) as { version?: unknown; tasks?: unknown };
-      if (raw.version !== 1 || !Array.isArray(raw.tasks)) return;
-      for (const task of raw.tasks) if (validTask(task) && this.tasks.size < MAX_TASKS) this.tasks.set(task.id, copy(task));
+      const raw = JSON.parse(readFileSync(this.file, 'utf8')) as { version?: unknown; tasks?: unknown } | null;
+      if (!raw || raw.version !== 1 || !Array.isArray(raw.tasks) || raw.tasks.length > MAX_TASKS || !raw.tasks.every(validTask)) {
+        throw new Error('invalid QA task store');
+      }
+      const loaded = new Map<string, QaTask>();
+      for (const task of raw.tasks) {
+        if (loaded.has(task.id)) throw new Error('duplicate QA task ID');
+        loaded.set(task.id, copy(task));
+      }
+      this.tasks = loaded;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') this.corrupt = true;
     }
