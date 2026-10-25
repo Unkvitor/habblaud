@@ -420,7 +420,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       // Alterar a fila interna não executa código, mas fica limitado ao escritório local como os demais controles.
       if (!deps.qaTasks) sendJson(res, 404, { error: tr('rota desconhecida') });
       else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('tarefas internas só são gerenciadas pelo próprio computador (http://localhost)')) });
-      else handleQaTasks(req, res, path, deps.qaTasks, (id) => office.get(id));
+      else handleQaTasks(req, res, path, deps.qaTasks, (id) => office.get(id), deps.qaRoles);
       return true;
     }
     if (path === '/api/qa-roles' || path.startsWith('/api/qa-roles/')) {

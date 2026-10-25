@@ -33,3 +33,31 @@ em versão desconhecida, o sistema **bloqueia novas gravações**, preservando o
 - O perfil ainda não é adicionado automaticamente ao prompt de um agente.
 - Uma função não é uma permissão de sistema nem uma autorização de execução.
 - Alterações em perfis não modificam o histórico existente ou o QA Agent Hub.
+
+## Entregas e revisão (P2.6)
+
+Subtarefas de QA aceitam **entregas**: resumo (até 2.000 caracteres) e até 20 referências de evidência
+(caminhos, URLs, IDs; até 500 caracteres cada). O autor é sempre o responsável da subtarefa; o corpo da
+requisição não o define. A fila de tarefas é a mesma de sempre: as entregas ficam dentro de cada tarefa em
+`qa-tasks.json` (campo opcional `deliveries`, formato ainda na versão 1; arquivos sem entregas não mudam).
+
+Fluxo: `draft` → `in_review` → `approved` | `returned`. Uma entrega devolvida é definitiva no histórico;
+os ajustes entram em uma nova entrega. Só pode haver uma entrega em andamento por subtarefa.
+
+- `POST /api/qa-tasks/<id>/deliveries` `{ summary, evidence? }` → 201.
+- `POST /api/qa-tasks/<id>/deliveries/<deliveryId>/review-request` `{ reviewerId }` — o revisor precisa ser
+  um agente Codex/Antigravity presente com o papel `investigator_reviewer` e diferente do responsável
+  (403 caso contrário). A tarefa passa a `awaiting_approval`. Nenhuma mensagem é enviada ao revisor.
+- `POST /api/qa-tasks/<id>/deliveries/<deliveryId>/decision` `{ action: "approve"|"return", justification }` —
+  a justificativa é obrigatória; devolver reabre a tarefa (`assigned`). A decisão é registrada como
+  `human:local-ui`, definido pelo servidor, e exige que o revisor ainda tenha o papel.
+
+Regras de conclusão (`PATCH` para `completed`): dependências concluídas; nenhuma subtarefa aberta; e, para
+subtarefas, a **última** entrega aprovada. Subtarefas abertas criadas antes do P2.6 precisam de uma entrega
+aprovada para concluir; as já concluídas não mudam.
+
+Limitações: todas as rotas usam o controle local de Host/Origin e exigem `Content-Type: application/json`,
+mas **localhost não autentica uma pessoa**. O revisor é um vínculo informativo: ele não é acionado pelo
+Habblaud, e a decisão é registrada pela interface local em nome dele. Voltar a uma versão anterior do
+Habblaud com um arquivo que já tem entregas faz o arquivo ser tratado como inválido (gravações bloqueadas,
+bytes preservados).

@@ -157,6 +157,75 @@ describe('API HTTP', () => {
     expect(roles.list()).toEqual([]);
   });
 
+  it('colaboração de QA: entrega, revisão e decisão pela API sem tocar em sessões nem executar', async () => {
+    await env.close(); env.cleanup();
+    const tasks = new QaTaskStore(null, () => 1); const roles = new QaRoleStore(null, () => 2);
+    const queue = new SupervisedExecutor({ now: () => 3 });
+    const run = vi.fn(async () => undefined); const cancel = vi.fn(async () => undefined);
+    env = await start({ qaTasks: tasks, qaRoles: roles, qaExecutions: queue, qaRealExecutions: { run, cancel } as any }, { internalTasks: () => tasks.list() });
+    env.office.addMain({ id: '.codex:marcelo', provider: 'codex', account: '.codex', sessionId: 'thread-marcelo', cwd: '/p/loja', role: 'Agente principal', startedAt: 1, status: 'idle' });
+    env.office.addMain({ id: '.codex:henrique', provider: 'codex', account: '.codex', sessionId: 'thread-henrique', cwd: '/p/loja', role: 'Agente principal', startedAt: 1, status: 'idle' });
+    env.office.addMain({ id: '.antigravity:gemini', provider: 'antigravity', account: '.antigravity', sessionId: 'thread-gemini', cwd: '/p/loja', role: 'Agente principal', startedAt: 1, status: 'idle' });
+    const post = (path: string, body: unknown, headers: Record<string, string> = JSON_HEADERS) => fetch(`${env.base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+    const parent = tasks.create({ description: 'Demanda de regressão', assigneeId: '.codex:marcelo' });
+    const sub = tasks.create({ description: 'Automatizar suíte', assigneeId: '.codex:henrique', parentId: parent.id });
+    tasks.transition(sub.id, 'assigned');
+    const base = `/api/qa-tasks/${encodeURIComponent(sub.id)}/deliveries`;
+
+    // Corpo inválido e rotas com método errado.
+    expect((await post(base, { summary: '' })).status).toBe(400);
+    expect((await fetch(`${env.base}${base}`)).status).toBe(405);
+    expect((await post(`/api/qa-tasks/%E0%A4%A/deliveries`, { summary: 'x' })).status).toBe(400);
+    expect((await post(`/api/qa-tasks/inexistente/deliveries`, { summary: 'x' })).status).toBe(404);
+    // Segurança: exige JSON e origem local.
+    expect((await post(base, { summary: 'x' }, { 'Content-Type': 'text/plain' })).status).toBe(415);
+    expect((await post(base, { summary: 'x' }, { ...JSON_HEADERS, Origin: 'http://attacker.example' })).status).toBe(403);
+    expect(tasks.get(sub.id)!.deliveries).toBeUndefined();
+
+    const created = await post(base, { summary: 'Suíte pronta', evidence: ['reports/run.html'] });
+    expect(created.status).toBe(201);
+    const deliveryId = ((await created.json()) as any).task.deliveries[0].id as string;
+    const review = `${base}/${deliveryId}/review-request`; const decision = `${base}/${deliveryId}/decision`;
+
+    // Sem papel de revisor, o encaminhamento é recusado (403); com papel errado também.
+    expect((await post(review, { reviewerId: '.antigravity:gemini' })).status).toBe(403);
+    await fetch(`${env.base}/api/qa-roles/${encodeURIComponent('.antigravity:gemini')}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ role: 'coordinator' }) });
+    expect((await post(review, { reviewerId: '.antigravity:gemini' })).status).toBe(403);
+    // Agente presente, mas sem papel de revisor, também é recusado.
+    expect((await post(review, { reviewerId: '.codex:henrique' })).status).toBe(403);
+    await fetch(`${env.base}/api/qa-roles/${encodeURIComponent('.antigravity:gemini')}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ role: 'investigator_reviewer' }) });
+    const sent = await post(review, { reviewerId: '.antigravity:gemini' });
+    expect(sent.status).toBe(200);
+    expect(((await sent.json()) as any).task).toMatchObject({ status: 'awaiting_approval' });
+
+    // Decisão: justificativa obrigatória; a identidade nunca vem do corpo.
+    expect((await post(decision, { action: 'approve' })).status).toBe(400);
+    expect((await post(decision, { action: 'explode', justification: 'x' })).status).toBe(400);
+    const returned = await post(decision, { action: 'return', justification: 'Cobrir timeout', decidedBy: '.antigravity:gemini' });
+    expect(returned.status).toBe(200);
+    const afterReturn = ((await returned.json()) as any).task;
+    expect(afterReturn.status).toBe('assigned');
+    expect(afterReturn.deliveries[0]).toMatchObject({ status: 'returned', decidedBy: 'human:local-ui', justification: 'Cobrir timeout' });
+    expect((await post(decision, { action: 'approve', justification: 'tarde' })).status).toBe(409);
+    expect((await fetch(`${env.base}/api/qa-tasks/${encodeURIComponent(sub.id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ status: 'completed' }) })).status).toBe(409);
+
+    const second = ((await (await post(base, { summary: 'Com timeout' })).json()) as any).task.deliveries[1].id as string;
+    expect((await post(`${base}/${second}/review-request`, { reviewerId: '.antigravity:gemini' })).status).toBe(200);
+    expect((await post(`${base}/${second}/decision`, { action: 'approve', justification: 'Conferido' })).status).toBe(200);
+    // Demanda principal só conclui depois da subtarefa.
+    tasks.transition(parent.id, 'assigned');
+    const patch = (id: string) => fetch(`${env.base}/api/qa-tasks/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ status: 'completed' }) });
+    expect((await patch(parent.id)).status).toBe(409);
+    expect((await patch(sub.id)).status).toBe(200);
+    expect((await patch(parent.id)).status).toBe(200);
+
+    // Nada foi executado; sessões e papéis dos agentes continuam como estavam.
+    expect(run).not.toHaveBeenCalled(); expect(queue.list()).toEqual([]);
+    for (const [id, thread] of [['.codex:marcelo', 'thread-marcelo'], ['.codex:henrique', 'thread-henrique'], ['.antigravity:gemini', 'thread-gemini']]) {
+      expect(env.office.get(id)).toMatchObject({ sessionId: thread, role: 'Agente principal' });
+    }
+  });
+
   it('executa o ciclo simulado pela API sem tocar em agentes', async () => {
     await env.close(); env.cleanup();
     const tasks = new QaTaskStore(null, () => 1); const queue = new SupervisedExecutor({ now: () => 2 });

@@ -119,9 +119,45 @@ export interface TaskItem {
 export interface QaTaskEvent {
   id: string;
   at: number;
-  type: 'created' | 'status_changed' | 'delegation_proposed' | 'delegation_decided';
+  type: 'created' | 'status_changed' | 'delegation_proposed' | 'delegation_decided' | QaDeliveryEventType;
   from?: TaskStatus;
   to: TaskStatus;
+  /** Entrega a que o evento se refere (P2.6). */
+  deliveryId?: string;
+}
+
+export type QaDeliveryEventType = 'delivery_recorded' | 'delivery_review_requested' | 'delivery_approved' | 'delivery_returned';
+export type QaDeliveryStatus = 'draft' | 'in_review' | 'approved' | 'returned';
+
+/** Evento imutável do histórico de uma entrega de QA. */
+export interface QaDeliveryHistoryEntry {
+  id: string;
+  at: number;
+  type: QaDeliveryEventType;
+  /** Quem agiu: o responsável (registro), o revisor vinculado ou a identidade humana local. */
+  actorId: string;
+  note?: string;
+}
+
+/**
+ * Entrega de uma subtarefa de QA para revisão (P2.6). Só registra resumo, referências de evidência e decisões;
+ * nunca inicia, retoma nem instrui agentes.
+ */
+export interface QaDelivery {
+  id: string;
+  /** Sempre o responsável da subtarefa no momento do registro. */
+  submittedBy: string;
+  summary: string;
+  evidence: string[];
+  status: QaDeliveryStatus;
+  createdAt: number;
+  updatedAt: number;
+  reviewerId?: string;
+  reviewedAt?: number;
+  /** Identidade que registrou a decisão (humana, local). */
+  decidedBy?: string;
+  justification?: string;
+  history: QaDeliveryHistoryEntry[];
 }
 
 export interface QaDelegation {
@@ -163,6 +199,8 @@ export interface QaTask {
   dependencies?: string[];
   delegation?: QaDelegation;
   execution?: QaExecutionPlan;
+  /** Entregas desta subtarefa, da mais antiga para a mais recente (P2.6). Ausente em tarefas anteriores. */
+  deliveries?: QaDelivery[];
 }
 
 export interface AgentStats {

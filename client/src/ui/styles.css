@@ -11199,4 +11199,8 @@ html.is-replay #world {
 .qa-tasks__item { border:1px solid var(--ui-line); border-radius:8px; padding:8px; }
 .qa-tasks__item.is-awaiting_approval { border-color:var(--ui-warn); }
 .qa-tasks__actions { display:flex; flex-wrap:wrap; gap:5px; margin:6px 0; }
+.qa-tasks__deliveries { margin:6px 0; }
+.qa-tasks__delivery { border-left:3px solid var(--ui-line); padding-left:8px; }
+.qa-tasks__delivery.is-approved { border-color:var(--ui-ok, var(--ui-line)); }
+.qa-tasks__delivery.is-returned, .qa-tasks__delivery.is-in_review { border-color:var(--ui-warn); }
 @media (max-width: 600px) { .qa-tasks { left:var(--gap); right:var(--gap); width:auto; } }

@@ -12,10 +12,13 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- Fila de tarefas QA agora recusa concluir uma tarefa com dependências não concluídas ou com subtarefas abertas (antes só o executor checava dependências).
 - Arquivo de tarefas QA com versão desconhecida, itens inválidos ou IDs duplicados agora bloqueia gravações em vez de descartar silenciosamente registros recuperáveis.
 - Idempotência do executor supervisionado recusa o reuso da mesma chave com um plano, escopo, agente ou thread diferente, inclusive após recarregar a fila.
 
 ### Adicionado
+
+- Colaboração supervisionada de QA (P2.6): subtarefas recebem entregas com resumo e referências de evidência, que seguem para um revisor com o papel persistente de investigador e revisor e são aprovadas ou devolvidas com justificativa. O histórico de cada entrega e a trilha da tarefa são preservados. Subtarefas só concluem com a última entrega aprovada, a demanda principal só conclui sem subtarefas abertas e dependências pendentes bloqueiam a conclusão. Nada disso envia mensagens nem inicia agentes; as decisões vêm da interface local.
 
 - Perfis informativos de QA atribuídos manualmente aos IDs originais de agentes Codex e Antigravity, persistidos separadamente e editáveis no painel Tarefas QA, sem alterar sessões ou conceder permissões.
 

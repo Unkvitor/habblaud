@@ -2,6 +2,7 @@ import type { QaTask, TaskStatus } from '../../../shared/types';
 import { tr } from '../../../shared/i18n';
 import type { UiContext } from './context';
 import { h } from './dom';
+import { DELIVERY_EVENT_LABEL, renderDeliveries, type DeliveryView } from './qa-deliveries';
 
 const NEXT: Record<TaskStatus, TaskStatus[]> = {
   pending: ['assigned', 'blocked'], assigned: ['in_progress', 'blocked', 'awaiting_approval', 'completed'],
@@ -46,6 +47,7 @@ export class QaTasksPanel {
   private readonly roleChoice: HTMLSelectElement;
   private readonly rolesList: HTMLElement;
   private roles: RoleAssignment[] = [];
+  private readonly drafts = new Map<string, string>();
   private open = false;
   private loading = false;
 
@@ -122,14 +124,14 @@ export class QaTasksPanel {
     this.list.replaceChildren(...tasks.map((task) => {
       const title = h('strong', { text: task.description });
       const state = h('p', { text: LABEL[task.status] + (task.status === 'awaiting_approval' ? ` · ${tr('requer decisão humana')}` : '') });
-      const history = h('details', {}, h('summary', { text: tr('Histórico ({0})', [task.events.length]) }), h('ol', {}, ...task.events.map((event) => h('li', { text: `${new Date(event.at).toLocaleString()} · ${event.from ? `${LABEL[event.from]} → ` : ''}${LABEL[event.to]}` }))));
+      const history = h('details', {}, h('summary', { text: tr('Histórico ({0})', [task.events.length]) }), h('ol', {}, ...task.events.map((event) => h('li', { text: `${new Date(event.at).toLocaleString()} · ${event.type in DELIVERY_EVENT_LABEL ? DELIVERY_EVENT_LABEL[event.type as keyof typeof DELIVERY_EVENT_LABEL] : `${event.from ? `${LABEL[event.from]} → ` : ''}${LABEL[event.to]}`}` }))));
       const actions = h('div', { class: 'qa-tasks__actions' }, ...allowedQaTransitions(task.status).map((next) => h('button', { class: 'ui-btn ui-btn--sm', text: LABEL[next], on: { click: () => void this.transition(task.id, next) } })));
       const relations = task.parentId || task.dependencies?.length ? h('p', { text: `${task.parentId ? `${tr('Tarefa principal')}: ${task.parentId}` : ''}${task.parentId && task.dependencies?.length ? ' \u00b7 ' : ''}${task.dependencies?.length ? `${tr('Dependências')}: ${task.dependencies.join(', ')}` : ''}` }) : null;
       const delegation = task.delegation ? h('p', { text: `${tr('Delegação')}: ${task.delegation.status === 'proposed' ? tr('aguardando aprovação humana') : task.delegation.status === 'approved' ? tr('aprovada para execução futura') : tr('rejeitada')}` }) : null;
       const execution = executions.find((value) => value.taskId === task.id);
       const simulation = execution ? h('div', { class: `qa-tasks__simulation ${execution.mode === 'real' ? 'is-real' : 'is-simulated'}` }, h('p', { text: `${execution.mode === 'real' ? tr('Codex real') : tr('Simulação')}: ${execution.state}${execution.checkpoint ? ` · ${execution.checkpoint}` : ''}${execution.result ? ` · ${execution.result}` : ''}${execution.error ? ` · ${execution.error}` : ''}` }), ...(execution.mode === 'real' ? [h('p', { text: `${tr('Escopo')}: ${execution.scope ?? ''}` }), h('p', { text: tr('Permissões: somente leitura; aprovação sob demanda') })] : []), h('details', {}, h('summary', { text: tr('Histórico ({0})', [execution.events.length]) }), h('ol', {}, ...execution.events.map(event => h('li', { text: `${new Date(event.at).toLocaleString()} · ${event.type}${event.detail ? ` · ${event.detail}` : ''}` })))), ...this.simulationControls(execution)) : h('div', {}, h('button', { class: 'ui-btn ui-btn--sm', text: tr('Criar plano simulado'), on: { click: () => void this.plan(task) } }), ...(realAvailable ? [h('button', { class: 'ui-btn ui-btn--sm', text: tr('Criar plano Codex real'), on: { click: () => void this.plan(task, 'real') } })] : []));
       if (task.delegation?.status === 'proposed') actions.append(h('button', { class: 'ui-btn ui-btn--sm', text: tr('Aprovar delegação'), on: { click: () => void this.decision(task.id, 'approve') } }), h('button', { class: 'ui-btn ui-btn--sm', text: tr('Rejeitar delegação'), on: { click: () => void this.decision(task.id, 'reject') } }));
-      return h('li', { class: `qa-tasks__item is-${task.status}` }, title, state, relations, delegation, simulation, actions, history);
+      return h('li', { class: `qa-tasks__item is-${task.status}` }, title, state, relations, delegation, renderDeliveries(task, this.deliveryView()), simulation, actions, history);
     }));
     if (!tasks.length) this.list.append(h('li', { text: tr('Nenhuma tarefa interna registrada.') }));
   }
@@ -143,6 +145,35 @@ export class QaTasksPanel {
   private async transition(id: string, status: TaskStatus): Promise<void> {
     try { await request(`/api/qa-tasks/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); await this.load(); }
     catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao atualizar tarefa.'); }
+  }
+  private deliveryView(): DeliveryView {
+    const agents = this.ctx.store.snapshot?.agents ?? [];
+    const name = (agentId: string): string => agents.find((agent) => agent.id === agentId)?.name ?? agentId;
+    const reviewers = this.roles.filter((role) => role.role === 'investigator_reviewer')
+      .flatMap((role) => agents.filter((agent) => agent.id === role.agentId && agent.kind === 'main' && (agent.provider === 'codex' || agent.provider === 'antigravity')))
+      .map((agent) => ({ id: agent.id, name: agent.name }));
+    const send = async (path: string, body: unknown, failure: string): Promise<boolean> => {
+      try {
+        await request(`/api/qa-tasks/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        await this.load();
+        return true;
+      } catch (error) {
+        this.status.textContent = error instanceof Error ? error.message : failure;
+        return false;
+      }
+    };
+    const task = (id: string): string => encodeURIComponent(id);
+    return {
+      reviewers,
+      name,
+      drafts: this.drafts,
+      notify: (message: string) => { this.status.textContent = message; },
+      actions: {
+        record: (id, summary, evidence) => send(`${task(id)}/deliveries`, { summary, evidence }, tr('Falha ao registrar entrega.')),
+        requestReview: (id, deliveryId, reviewerId) => send(`${task(id)}/deliveries/${encodeURIComponent(deliveryId)}/review-request`, { reviewerId }, tr('Falha ao enviar para revisão.')),
+        decide: (id, deliveryId, action, justification) => send(`${task(id)}/deliveries/${encodeURIComponent(deliveryId)}/decision`, { action, justification }, tr('Falha ao decidir a entrega.')),
+      },
+    };
   }
   private async decision(id: string, action: 'approve' | 'reject'): Promise<void> {
     try { await request(`/api/qa-tasks/${encodeURIComponent(id)}/delegation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, decidedBy: 'human' }) }); await this.load(); }
