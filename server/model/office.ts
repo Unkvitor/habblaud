@@ -284,6 +284,11 @@ export class Office {
     return this.agents.get(id)?.info;
   }
 
+  /** Uma identidade persistida permite restaurar uma sessão Codex encerrada por reboot como inativa. */
+  hasPersistedName(sessionId: string): boolean {
+    return this.deps.names.get(sessionId) !== undefined;
+  }
+
   /** Agentes reais presentes (inclusive em período de graça). */
   list(): AgentInfo[] {
     return [...this.agents.values()].map((r) => r.info);

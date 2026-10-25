@@ -414,7 +414,13 @@ export class CodexSource implements AgentSource, CodexLive {
       // Lock velho de um crash: o lock é antigo e o rollout está parado há muito tempo (ou nem existe). Um thread
       // antigo retomado agora tem lock novo (o Codex cria o arquivo ao carregar e o apaga ao descarregar).
       const rolloutIdle = !t.rolloutPath || (t.lastWriteAt !== undefined && now - t.lastWriteAt > STALE_LOCK_MS);
-      if (lock && now - lock.createdAt > STALE_LOCK_MS && rolloutIdle) return false;
+      if (lock && now - lock.createdAt > STALE_LOCK_MS && rolloutIdle) {
+        // Depois de um reboot, o Codex pode deixar a trava antiga. Se o Habblaud
+        // conhece a identidade daquele thread, restaura só a presença histórica;
+        // nunca afirma que o processo antigo ainda está trabalhando.
+        if (!this.opts.office.hasPersistedName(t.threadId)) return false;
+        t.status = 'idle';
+      }
     }
     // Sem o projeto (sessão aberta ainda sem prompt, só com o lock) não há sala para o principal: espera o rollout ou um
     // hook dizer o cwd. Isso também segura um lock de subagente até o rollout dele dizer de quem ele é.
