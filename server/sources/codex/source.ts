@@ -299,7 +299,7 @@ export class CodexSource implements AgentSource, CodexLive {
     const now = (this.lastPollAt = this.now());
     const seen = new Set<string>();
     for (const acc of this.accs) {
-      const present = this.presentThreads(acc, now);
+      const present = this.presentThreads(acc, now, boot);
       for (const [threadId, via] of present) {
         const key = `${acc.id}:${threadId}`;
         let t = this.threads.get(key);
@@ -331,8 +331,8 @@ export class CodexSource implements AgentSource, CodexLive {
    * Threads presentes de uma conta e por quê: 'lock' (lock com idade suficiente), 'recent' (sem pasta de locks:
    * rollout modificado há pouco) ou 'hook' (evento de hook recente).
    */
-  private presentThreads(acc: CodexAccount, now: number): Map<string, 'lock' | 'recent' | 'hook'> {
-    const out = new Map<string, 'lock' | 'recent' | 'hook'>();
+  private presentThreads(acc: CodexAccount, now: number, boot = false): Map<string, 'lock' | 'recent' | 'hook' | 'persisted'> {
+    const out = new Map<string, 'lock' | 'recent' | 'hook' | 'persisted'>();
     acc.locks = readLocks(acc.dir);
     if (acc.locks) {
       this.watchDir(`${acc.dir}${sep}${LOCKS_DIR}`);
@@ -353,6 +353,12 @@ export class CodexSource implements AgentSource, CodexLive {
         const last = Math.max(mtime, t?.lastWriteAt ?? 0);
         if (now - last <= FALLBACK_RECENT_MS) out.set(threadId, 'recent');
       }
+    }
+    // A reboot can leave only the coordination lock. Persisted identities still have a
+    // valid rollout and must remain visible as idle without pretending a process is live.
+    for (const threadId of boot ? this.opts.office.persistedSessionIds() : []) {
+      if (out.has(threadId) || !isThreadId(threadId) || !acc.index.find(threadId)) continue;
+      out.set(threadId, 'persisted');
     }
     for (const t of this.threads.values()) {
       if (t.acc !== acc || out.has(t.threadId)) continue;
@@ -378,10 +384,15 @@ export class CodexSource implements AgentSource, CodexLive {
   }
 
   /** Um ciclo de um thread presente: acha/lê o rollout e decide se ele está (ou continua) no escritório. */
-  private syncThread(t: ThreadTracker, via: 'lock' | 'recent' | 'hook', now: number, boot: boolean): void {
+  private syncThread(t: ThreadTracker, via: 'lock' | 'recent' | 'hook' | 'persisted', now: number, boot: boolean): void {
     delete t.missingSince;
     if (t.inOffice && !this.opts.office.has(t.key)) t.inOffice = false; // saiu do escritório (graça encerrada)
     this.pump(t, boot);
+    if (via === 'persisted') {
+      t.status = 'idle';
+      t.statusAt = now;
+      delete t.waitingFor;
+    }
     this.reconcile(t, now, via);
     if (t.inOffice && t.kind === 'main') {
       this.quietCheck(t, now);
@@ -390,7 +401,7 @@ export class CodexSource implements AgentSource, CodexLive {
   }
 
   /** O thread deve estar no escritório agora? Entra, sai ou muda de sala conforme o caso. */
-  private reconcile(t: ThreadTracker, now: number, via?: 'lock' | 'recent' | 'hook'): void {
+  private reconcile(t: ThreadTracker, now: number, via?: 'lock' | 'recent' | 'hook' | 'persisted'): void {
     const want = this.wanted(t, now, via);
     if (!want) {
       if (t.inOffice) this.leave(t);
@@ -399,7 +410,7 @@ export class CodexSource implements AgentSource, CodexLive {
     if (!t.inOffice) this.enter(t, now);
   }
 
-  private wanted(t: ThreadTracker, now: number, via?: 'lock' | 'recent' | 'hook'): boolean {
+  private wanted(t: ThreadTracker, now: number, via?: 'lock' | 'recent' | 'hook' | 'persisted'): boolean {
     if (t.kind === 'internal') return false;
     const hookRecent = t.lastHookAt !== undefined && now - t.lastHookAt < HOOK_PRESENCE_MS;
     // SessionEnd: fecha, a não ser que algo novo tenha acontecido depois.

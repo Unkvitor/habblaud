@@ -114,6 +114,11 @@ export class NameStore {
     return s ? { name: s.name, look: s.look } : undefined;
   }
 
+  /** Sessões com identidade persistida, usadas para restaurar presença após reboot. */
+  keys(): string[] {
+    return [...this.names.keys()];
+  }
+
   // ---------------------------------------------------------------- personagem de cada sala (projeto)
 
   character(roomId: string): StoredCharacter | undefined {

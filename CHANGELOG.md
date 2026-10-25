@@ -12,6 +12,8 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- Restauração genérica de sessões Codex nomeadas: identidades persistidas com rollout válido reaparecem como ociosas mesmo quando locks de processo não sobrevivem ao reboot.
+
 - Executor Codex supervisionado preparado sobre o App Server nativo existente, com autorização humana separada, progresso persistido e execução real desligada por padrão.
 - Painel e API distinguem planos Codex reais, exigem a thread original e exibem escopo e permissões antes da autorização; o opt-in real permanece desligado por padrão.
 - Auditoria persistida de cada etapa de simulacao (criacao, autorizacao, inicio, checkpoint e termino), exibida no painel de tarefas QA.

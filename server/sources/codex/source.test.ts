@@ -269,6 +269,15 @@ describe('fonte do Codex: presença pelos locks', () => {
     ctx.source.boot();
     expect(ctx.agent()).toMatchObject({ name: 'Marcelo - QA Architect', status: 'idle', roomId: '/projetos/qa' });
   });
+  it('restaura identidade persistida com rollout válido mesmo sem lock após reboot', () => {
+    const ctx = setup({ noLocks: true });
+    const t0 = ctx.now();
+    ctx.names.remember(T, { name: 'Marcelo', look: 'm' });
+    ctx.home.rollout(T, [R.meta(T, { at: t0 - 2 * 3600_000, cwd: '/projetos/loja' })]);
+    ctx.source.boot();
+    expect(ctx.agent()?.name).toBe('Marcelo');
+    expect(ctx.agent()?.status).toBe('idle');
+  });
 
   it('thread antigo retomado agora (lock novo, rollout parado há dias) aparece', () => {
     const ctx = setup();

@@ -292,6 +292,10 @@ export class Office {
     return this.deps.names.get(sessionId) !== undefined;
   }
 
+  persistedSessionIds(): string[] {
+    return this.deps.names.keys();
+  }
+
   /** Agentes reais presentes (inclusive em período de graça). */
   list(): AgentInfo[] {
     return [...this.agents.values()].map((r) => r.info);
