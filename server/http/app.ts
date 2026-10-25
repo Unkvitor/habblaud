@@ -24,6 +24,8 @@ import type { FileFetcher } from '../deliveries/fetcher';
 import { HOST_WAIT_MS } from '../host-wait';
 import { handleQaTasks } from '../tasks/http';
 import type { QaTaskStore } from '../tasks/store';
+import type { SupervisedExecutor } from '../tasks/executor';
+import { handleSimulatedExecutions } from '../tasks/executor-http';
 
 export interface ApiDeps {
   office: Office;
@@ -98,6 +100,7 @@ export interface ApiDeps {
   world?: (req: IncomingMessage, res: ServerResponse, url: URL) => void;
   /** Tarefas internas persistidas; não executam agentes. */
   qaTasks?: QaTaskStore;
+  qaExecutions?: SupervisedExecutor;
 }
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
@@ -413,6 +416,12 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       if (!deps.qaTasks) sendJson(res, 404, { error: tr('rota desconhecida') });
       else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('tarefas internas só são gerenciadas pelo próprio computador (http://localhost)')) });
       else handleQaTasks(req, res, path, deps.qaTasks, (id) => office.get(id));
+      return true;
+    }
+    if (path === '/api/qa-executions' || path.startsWith('/api/qa-executions/')) {
+      if (!deps.qaTasks || !deps.qaExecutions) sendJson(res, 404, { error: tr('rota desconhecida') });
+      else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('simulações só são gerenciadas pelo próprio computador (http://localhost)')) });
+      else handleSimulatedExecutions(req,res,path,deps.qaExecutions,deps.qaTasks,(id)=>{const a=office.get(id);return !!a&&a.kind==='main'&&(a.provider==='codex'||a.provider==='antigravity');});
       return true;
     }
     if (path === '/api/mod/summary') {

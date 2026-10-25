@@ -79,6 +79,7 @@ export class QaTaskStore {
   list(): QaTask[] {
     return [...this.tasks.values()].sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)).map(copy);
   }
+  get(id: string): QaTask | undefined { const task = this.tasks.get(id); return task ? copy(task) : undefined; }
 
   create(input: { description?: unknown; assigneeId?: unknown; parentId?: unknown; dependencies?: unknown; requesterId?: unknown; originAgentId?: unknown }): QaTask {
     this.writable();
@@ -93,7 +94,7 @@ export class QaTaskStore {
     const parentId = typeof input.parentId === 'string' && input.parentId ? input.parentId : undefined;
     if (parentId && !this.tasks.has(parentId)) throw new QaTaskError('not-found', tr('tarefa principal não encontrada'));
     const dependencies = Array.isArray(input.dependencies) && input.dependencies.every((id) => typeof id === 'string') ? [...new Set(input.dependencies as string[])] : [];
-    if (dependencies.some((id) => !this.tasks.has(id) || id === parentId)) throw new QaTaskError('invalid', tr('dependência de tarefa inválida'));
+    if (dependencies.some((id) => !this.tasks.has(id) || id === parentId || this.dependsOn(id, parentId))) throw new QaTaskError('invalid', tr('dependência de tarefa inválida ou cíclica'));
     const task: QaTask = {
       id: `qa-${randomUUID()}`,
       description,
@@ -148,5 +149,9 @@ export class QaTaskStore {
       renameSync(temp, this.file);
     }
     for (const listener of this.listeners) listener();
+  }
+  private dependsOn(id: string, sought: string | undefined, seen = new Set<string>()): boolean {
+    if (!sought || id === sought || seen.has(id)) return id === sought;
+    seen.add(id); const task = this.tasks.get(id); return !!task?.dependencies?.some((dep) => this.dependsOn(dep, sought, seen));
   }
 }

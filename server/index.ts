@@ -66,6 +66,7 @@ import { BuildingTokens } from './world/tokens';
 import { BuildingUplink } from './world/uplink';
 import { WorldViewer } from './world/viewer';
 import { QaTaskStore } from './tasks/store';
+import { SupervisedExecutor } from './tasks/executor';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -84,6 +85,8 @@ const names = new NameStore(join(config.dataDir, 'names.json'));
 names.load();
 const qaTasks = new QaTaskStore(join(config.dataDir, 'qa-tasks.json'));
 qaTasks.load();
+const qaExecutions = new SupervisedExecutor({ file: join(config.dataDir, 'qa-executions.json') });
+qaExecutions.load();
 // Nomes de sala escolhidos pelo usuário (botão direito > Renomear).
 const roomAliases = new RoomAliases(join(config.dataDir, 'rooms.json'));
 roomAliases.load();
@@ -435,6 +438,7 @@ const api = createApiHandler({
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
   world: world ? createWorldRoutes(world, worldViewer, worldSocial) : undefined,
   qaTasks,
+  qaExecutions,
 });
 
 const server = http.createServer();
