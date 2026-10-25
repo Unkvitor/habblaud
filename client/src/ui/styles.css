@@ -11190,3 +11190,13 @@ html.is-replay #world {
 .native-gemini-chat .ui-md__block { max-width:100%; overflow:hidden; }
 .native-gemini-chat .ui-md__pre { white-space:pre; overflow-wrap:normal; overflow-x:auto; max-width:100%; }
 .native-gemini-copy { margin-top:6px; font-size:11px; }
+
+.qa-tasks { position: fixed; z-index: 30; right: var(--gap); top: calc(var(--top-h) + var(--gap)); width: min(440px, calc(100vw - var(--gap) * 2)); max-height: calc(100vh - var(--top-h) - var(--gap) * 2); overflow: auto; padding: 14px; }
+.qa-tasks > header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.qa-tasks__form { display:grid; gap:8px; margin:10px 0; }
+.qa-tasks__form textarea, .qa-tasks__form select { width:100%; box-sizing:border-box; }
+.qa-tasks__list { display:grid; gap:8px; padding:0; list-style:none; }
+.qa-tasks__item { border:1px solid var(--ui-line); border-radius:8px; padding:8px; }
+.qa-tasks__item.is-awaiting_approval { border-color:var(--ui-warn); }
+.qa-tasks__actions { display:flex; flex-wrap:wrap; gap:5px; margin:6px 0; }
+@media (max-width: 600px) { .qa-tasks { left:var(--gap); right:var(--gap); width:auto; } }

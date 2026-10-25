@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../test/fixtures';
@@ -36,5 +36,23 @@ describe('QaTaskStore', () => {
     expect(() => tasks.create({ description: 'revisar falha', assigneeId: 'gemini:1' })).toThrow(QaTaskError);
     expect(() => tasks.transition(task.id, 'completed')).toThrow(QaTaskError);
     expect(tasks.transition(task.id, 'assigned').status).toBe('assigned');
+  });
+
+  it('preserva o último arquivo íntegro se uma gravação for interrompida e ignora corrupção', () => {
+    const tmp = tempDir();
+    try {
+      const file = join(tmp.dir, 'qa-tasks.json');
+      const tasks = new QaTaskStore(file, () => 1);
+      const created = tasks.create({ description: 'Fila A', assigneeId: 'codex:marcelo' });
+      // Um temporário órfão nunca é promovido: rename atômico mantém o arquivo principal válido.
+      writeFileSync(`${file}.999.tmp`, '{interrompido');
+      const restored = new QaTaskStore(file);
+      restored.load();
+      expect(restored.list()).toEqual([created]);
+      writeFileSync(file, '{corrompido');
+      const corrupt = new QaTaskStore(file);
+      corrupt.load();
+      expect(corrupt.list()).toEqual([]);
+    } finally { tmp.cleanup(); }
   });
 });

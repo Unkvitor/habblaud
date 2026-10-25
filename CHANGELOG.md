@@ -12,6 +12,7 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- Painel operacional de tarefas QA no escritório: criação manual, escolha de responsável, estados, transições permitidas e trilha de auditoria persistida. Nenhuma ação do painel inicia ou instrui agentes.
 - Fundação local de tarefas internas de QA: vínculo explícito a um agente Codex ou Antigravity existente, estados auditáveis, persistência atômica e recuperação passiva após reinício. A fila não envia mensagens nem inicia, retoma ou executa agentes.
 
 ### Gemini / Antigravity no preview
