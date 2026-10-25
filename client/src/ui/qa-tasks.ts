@@ -14,9 +14,9 @@ const LABEL: Record<TaskStatus, string> = {
 };
 export function allowedQaTransitions(status: TaskStatus): readonly TaskStatus[] { return NEXT[status]; }
 
-interface SimulatedExecution { id: string; taskId: string; executorId: string; planHash: string; state: string; checkpoint?: string; result?: string; error?: string; events: Array<{ at: number; type: string; detail?: string }>; }
+interface SimulatedExecution { id: string; taskId: string; executorId: string; planHash: string; mode?: 'simulated'|'real'; scope?: string; authorizationKind?: 'simulated'|'human'; state: string; checkpoint?: string; result?: string; error?: string; events: Array<{ at: number; type: string; detail?: string }>; }
 type TaskResponse = { tasks?: QaTask[]; task?: QaTask };
-type ExecutionResponse = { executions?: SimulatedExecution[]; execution?: SimulatedExecution };
+type ExecutionResponse = { executions?: SimulatedExecution[]; execution?: SimulatedExecution; realAvailable?: boolean };
 async function request<T extends TaskResponse | ExecutionResponse = TaskResponse>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { cache: 'no-store', ...init });
   const data = await response.json() as T & { error?: string };
@@ -65,12 +65,12 @@ export class QaTasksPanel {
   private async load(): Promise<void> {
     if (this.loading) return;
     this.loading = true; this.agents();
-    try { const tasks=(await request('/api/qa-tasks')).tasks ?? []; this.taskChoices(tasks); const executions=(await request<ExecutionResponse>('/api/qa-executions')).executions ?? []; this.render(tasks, executions); this.status.textContent = ''; }
+    try { const tasks=(await request('/api/qa-tasks')).tasks ?? []; this.taskChoices(tasks); const executionData=await request<ExecutionResponse>('/api/qa-executions'); this.render(tasks, executionData.executions ?? [], !!executionData.realAvailable); this.status.textContent = ''; }
     catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao carregar tarefas.'); }
     finally { this.loading = false; }
   }
   private taskChoices(tasks: QaTask[]): void { const parent=this.parent.value; const deps=[...this.dependencies.selectedOptions].map(x=>x.value); this.parent.replaceChildren(h('option',{text:tr('Sem tarefa principal'),attrs:{value:''}}),...tasks.map(t=>h('option',{text:t.description,attrs:{value:t.id}}))); this.dependencies.replaceChildren(...tasks.map(t=>h('option',{text:t.description,attrs:{value:t.id}}))); this.parent.value=parent; for(const o of this.dependencies.options)o.selected=deps.includes(o.value); }
-  private render(tasks: QaTask[], executions: SimulatedExecution[] = []): void {
+  private render(tasks: QaTask[], executions: SimulatedExecution[] = [], realAvailable = false): void {
     this.list.replaceChildren(...tasks.map((task) => {
       const title = h('strong', { text: task.description });
       const state = h('p', { text: LABEL[task.status] + (task.status === 'awaiting_approval' ? ` · ${tr('requer decisão humana')}` : '') });
@@ -79,7 +79,7 @@ export class QaTasksPanel {
       const relations = task.parentId || task.dependencies?.length ? h('p', { text: `${task.parentId ? `${tr('Tarefa principal')}: ${task.parentId}` : ''}${task.parentId && task.dependencies?.length ? ' \u00b7 ' : ''}${task.dependencies?.length ? `${tr('Dependências')}: ${task.dependencies.join(', ')}` : ''}` }) : null;
       const delegation = task.delegation ? h('p', { text: `${tr('Delegação')}: ${task.delegation.status === 'proposed' ? tr('aguardando aprovação humana') : task.delegation.status === 'approved' ? tr('aprovada para execução futura') : tr('rejeitada')}` }) : null;
       const execution = executions.find((value) => value.taskId === task.id);
-      const simulation = execution ? h('div', { class: 'qa-tasks__simulation' }, h('p', { text: `${tr('Simulação')}: ${execution.state}${execution.checkpoint ? ` · ${execution.checkpoint}` : ''}${execution.result ? ` · ${execution.result}` : ''}${execution.error ? ` · ${execution.error}` : ''}` }), h('details', {}, h('summary', { text: tr('Histórico ({0})', [execution.events.length]) }), h('ol', {}, ...execution.events.map(event => h('li', { text: `${new Date(event.at).toLocaleString()} · ${event.type}${event.detail ? ` · ${event.detail}` : ''}` })))), ...this.simulationControls(execution)) : h('button', { class: 'ui-btn ui-btn--sm', text: tr('Criar plano simulado'), on: { click: () => void this.plan(task) } });
+      const simulation = execution ? h('div', { class: `qa-tasks__simulation ${execution.mode === 'real' ? 'is-real' : 'is-simulated'}` }, h('p', { text: `${execution.mode === 'real' ? tr('Codex real') : tr('Simulação')}: ${execution.state}${execution.checkpoint ? ` · ${execution.checkpoint}` : ''}${execution.result ? ` · ${execution.result}` : ''}${execution.error ? ` · ${execution.error}` : ''}` }), ...(execution.mode === 'real' ? [h('p', { text: `${tr('Escopo')}: ${execution.scope ?? ''}` }), h('p', { text: tr('Permissões: somente leitura; aprovação sob demanda') })] : []), h('details', {}, h('summary', { text: tr('Histórico ({0})', [execution.events.length]) }), h('ol', {}, ...execution.events.map(event => h('li', { text: `${new Date(event.at).toLocaleString()} · ${event.type}${event.detail ? ` · ${event.detail}` : ''}` })))), ...this.simulationControls(execution)) : h('div', {}, h('button', { class: 'ui-btn ui-btn--sm', text: tr('Criar plano simulado'), on: { click: () => void this.plan(task) } }), ...(realAvailable ? [h('button', { class: 'ui-btn ui-btn--sm', text: tr('Criar plano Codex real'), on: { click: () => void this.plan(task, 'real') } })] : []));
       if (task.delegation?.status === 'proposed') actions.append(h('button', { class: 'ui-btn ui-btn--sm', text: tr('Aprovar delegação'), on: { click: () => void this.decision(task.id, 'approve') } }), h('button', { class: 'ui-btn ui-btn--sm', text: tr('Rejeitar delegação'), on: { click: () => void this.decision(task.id, 'reject') } }));
       return h('li', { class: `qa-tasks__item is-${task.status}` }, title, state, relations, delegation, simulation, actions, history);
     }));
@@ -102,11 +102,11 @@ export class QaTasksPanel {
   }
   private simulationControls(execution: SimulatedExecution): HTMLElement[] {
     const controls: HTMLElement[]=[];
-    if(execution.state==='awaiting_authorization') controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr('Autorizar simulação'),on:{click:()=>void this.execution(execution.id,'authorize',{identity:'simulated:local-ui',planHash:execution.planHash})}}));
-    if(execution.state==='ready') controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr('Executar simulação'),on:{click:()=>void this.execution(execution.id,'simulate',{outcome:'success'})}}));
-    if(['awaiting_authorization','ready','running'].includes(execution.state)) controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr('Cancelar simulação'),on:{click:()=>void this.execution(execution.id,'cancel',{})}}));
+    if(execution.state==='awaiting_authorization') controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr(execution.mode === 'real' ? 'Autorizar execução real' : 'Autorizar simulação'),on:{click:()=>void this.execution(execution.id,execution.mode === 'real' ? 'authorize-real' : 'authorize',{identity:execution.mode === 'real' ? 'human:local-ui' : 'simulated:local-ui',planHash:execution.planHash})}}));
+    if(execution.state==='ready') controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr(execution.mode === 'real' ? 'Iniciar Codex real' : 'Executar simulação'),on:{click:()=>void this.execution(execution.id,execution.mode === 'real' ? 'execute' : 'simulate',execution.mode === 'real' ? {} : {outcome:'success'})}}));
+    if(['awaiting_authorization','ready','running'].includes(execution.state)) controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr(execution.mode === 'real' ? 'Cancelar execução' : 'Cancelar simulação'),on:{click:()=>void this.execution(execution.id,'cancel',{})}}));
     return controls;
   }
-  private async plan(task: QaTask): Promise<void> { try { await request('/api/qa-executions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskId:task.id,executorId:task.assigneeId,threadId:`simulated:${task.assigneeId}`,idempotencyKey:`ui-${task.id}`,planHash:`simulated-plan-${task.id}`,identity:'simulated:local-ui'})});await this.load();}catch(error){this.status.textContent=error instanceof Error?error.message:tr('Falha ao criar plano simulado.');} }
+  private async plan(task: QaTask, mode: 'simulated'|'real' = 'simulated'): Promise<void> { try { const agent=this.ctx.store.snapshot?.agents.find(value=>value.id===task.assigneeId); if(mode==='real'&&!agent?.sessionId) throw new Error(tr('A sessão original do agente não está disponível.')); await request('/api/qa-executions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode === 'real' ? { mode, taskId:task.id,executorId:task.assigneeId,threadId:agent!.sessionId,idempotencyKey:`ui-real-${task.id}`,planHash:`real-plan-${task.id}`,scope:task.description } : {taskId:task.id,executorId:task.assigneeId,threadId:`simulated:${task.assigneeId}`,idempotencyKey:`ui-${task.id}`,planHash:`simulated-plan-${task.id}`,identity:'simulated:local-ui'})});await this.load();}catch(error){this.status.textContent=error instanceof Error?error.message:tr('Falha ao criar plano.');} }
   private async execution(id:string,action:string,body:unknown):Promise<void>{try{await request(`/api/qa-executions/${encodeURIComponent(id)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});await this.load();}catch(error){this.status.textContent=error instanceof Error?error.message:tr('Falha na simulação.');}}
 }

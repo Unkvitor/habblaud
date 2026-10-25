@@ -67,6 +67,7 @@ import { BuildingUplink } from './world/uplink';
 import { WorldViewer } from './world/viewer';
 import { QaTaskStore } from './tasks/store';
 import { SupervisedExecutor } from './tasks/executor';
+import { RealCodexExecutor } from './tasks/real-executor';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -286,6 +287,8 @@ const dictation = config.messages
 const nativeCodex = config.terminal && config.messages && !config.inDocker && codexBin && process.env.HABBLAUD_NATIVE_CODEX === '1'
   ? new ManagedCodex(codexBin, join(config.home, 'projetos', 'qa-agents'), join(config.dataDir, 'native-codex.json')) : undefined;
 const nativeApi = nativeCodex ? nativeRoutes(nativeCodex, () => office.list().filter(a => a.provider === 'codex'), () => antigravity?.status()) : undefined;
+// Execucao real e opt-in explicito; a fila continua apenas simulada por padrao.
+const realQaExecutor = process.env.HABBLAUD_REAL_QA_EXECUTOR === '1' && nativeCodex ? new RealCodexExecutor(qaExecutions, nativeCodex) : undefined;
 // Gemini: demonstração isolada por padrão; CLI real exige flag própria.
 // Caso ambas estejam definidas, o simulador tem prioridade.
 const geminiDemoEnabled =
@@ -439,6 +442,7 @@ const api = createApiHandler({
   world: world ? createWorldRoutes(world, worldViewer, worldSocial) : undefined,
   qaTasks,
   qaExecutions,
+  qaRealExecutions: realQaExecutor,
 });
 
 const server = http.createServer();

@@ -121,7 +121,7 @@ describe('API HTTP', () => {
     const tasks = new QaTaskStore(null, () => 123);
     env = await start({ qaTasks: tasks }, { internalTasks: () => tasks.list() });
     tasks.onChange(() => env.office.markDirty());
-    env.office.addMain({ id: '.codex:marcelo', provider: 'codex', account: '.codex', sessionId: 'marcelo', cwd: '/p/loja', role: 'QA Architect', startedAt: 1, status: 'idle' });
+    env.office.addMain({ id: '.codex:marcelo', provider: 'codex', account: '.codex', sessionId: '11111111-1111-4111-8111-111111111111', cwd: '/p/loja', role: 'QA Architect', startedAt: 1, status: 'idle' });
     const created = await fetch(`${env.base}/api/qa-tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description: 'Planejar regressão', assigneeId: '.codex:marcelo' }) });
     expect(created.status).toBe(201);
     const task = ((await created.json()) as { task: { id: string; status: string; events: unknown[] } }).task;
@@ -152,6 +152,23 @@ describe('API HTTP', () => {
     const completed = await fetch(`${env.base}/api/qa-executions/${execution.id}/simulate`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ outcome: 'success' }) });
     expect(((await completed.json()) as any).execution).toMatchObject({ state: 'completed', checkpoint: 'simulated:checkpoint', result: 'simulated:ok' });
     expect((await fetch(`${env.base}/api/qa-executions/${execution.id}/cancel`, { method: 'POST', headers: JSON_HEADERS, body: '{}' })).status).toBe(400);
+  });
+
+  it('mantem execucao real separada e exige autorizacao humana vinculada ao plano', async () => {
+    await env.close(); env.cleanup();
+    const tasks = new QaTaskStore(null, () => 1); const queue = new SupervisedExecutor({ now: () => 2 });
+    const run = vi.fn(async () => undefined); const cancel = vi.fn(async () => undefined);
+    env = await start({ qaTasks: tasks, qaExecutions: queue, qaRealExecutions: { run, cancel } as any }, { internalTasks: () => tasks.list() });
+    env.office.addMain({ id: '.codex:marcelo', provider: 'codex', account: '.codex', sessionId: '11111111-1111-4111-8111-111111111111', cwd: '/p/loja', role: 'QA Architect', startedAt: 1, status: 'idle' });
+    const task = tasks.create({ description: 'Ler README de homologacao', assigneeId: '.codex:marcelo' });
+    const plan = { mode: 'real', taskId: task.id, executorId: '.codex:marcelo', threadId: '11111111-1111-4111-8111-111111111111', idempotencyKey: 'real-1', planHash: 'real-plan', scope: 'Leia apenas o README.md e informe o titulo.' };
+    const created = await fetch(`${env.base}/api/qa-executions`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(plan) });
+    expect(created.status).toBe(201); const execution = ((await created.json()) as any).execution;
+    expect((await fetch(`${env.base}/api/qa-executions/${execution.id}/authorize-real`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ identity: 'simulated:test', planHash: 'real-plan' }) })).status).toBe(400);
+    expect((await fetch(`${env.base}/api/qa-executions/${execution.id}/execute`, { method: 'POST', headers: JSON_HEADERS, body: '{}' })).status).toBe(409);
+    expect((await fetch(`${env.base}/api/qa-executions/${execution.id}/authorize-real`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ identity: 'human:local-ui', planHash: 'real-plan' }) })).status).toBe(200);
+    expect((await fetch(`${env.base}/api/qa-executions/${execution.id}/execute`, { method: 'POST', headers: JSON_HEADERS, body: '{}' })).status).toBe(202);
+    expect(run).toHaveBeenCalledWith(execution.id);
   });
 
   it('GET /api/stream envia retry, snapshot e feed; depois as mudanças', async () => {

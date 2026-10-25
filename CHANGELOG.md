@@ -13,6 +13,7 @@ do meio (0.**3**.0).
 ### Adicionado
 
 - Executor Codex supervisionado preparado sobre o App Server nativo existente, com autorização humana separada, progresso persistido e execução real desligada por padrão.
+- Painel e API distinguem planos Codex reais, exigem a thread original e exibem escopo e permissões antes da autorização; o opt-in real permanece desligado por padrão.
 - Auditoria persistida de cada etapa de simulacao (criacao, autorizacao, inicio, checkpoint e termino), exibida no painel de tarefas QA.
 - Base isolada do executor supervisionado: idempotência, autorização vinculada ao plano, concorrência por thread, recuperação como interrompida e sem transporte para modelos.
 - Propostas de delegação persistidas para tarefas QA, com decisão humana explícita e contrato inerte de execução futura. Arquivo de tarefas corrompido bloqueia novas gravações até recuperação, evitando sobrescrever dados.
