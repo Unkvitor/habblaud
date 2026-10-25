@@ -15,7 +15,7 @@ export function handleSimulatedExecutions(req: IncomingMessage, res: ServerRespo
       if (mode === 'real' && !real) throw new HttpError(403, 'execucao Codex real desligada; habilite o opt-in do executor');
       if (!body || typeof body.taskId !== 'string' || typeof body.executorId !== 'string' || typeof body.threadId !== 'string' || typeof body.idempotencyKey !== 'string' || typeof body.planHash !== 'string') throw new HttpError(400, 'plano invalido');
       if (mode === 'simulated' && !/^simulated:[\w.-]+$/.test(body.identity ?? '')) throw new HttpError(400, 'plano simulado invalido');
-      if (mode === 'real' && (typeof body.scope !== 'string' || !body.scope.trim() || body.scope.length > 2000 || !/^\w{8}-\w{4}-[1-5]\w{3}-[89abAB]\w{3}-\w{12}$/.test(body.threadId) || threadOf?.(body.executorId) !== body.threadId || /\b(rm\s+-rf|git\s+(push|reset)|sudo|jira|gitlab|pipeline|producao)\b/i.test(body.scope))) throw new HttpError(400, 'escopo ou thread real invalido');
+      if (mode === 'real' && (typeof body.scope !== 'string' || !body.scope.trim() || body.scope.length > 2000 || !/^\w{8}-\w{4}-[1-8]\w{3}-[89abAB]\w{3}-\w{12}$/.test(body.threadId) || threadOf?.(body.executorId) !== body.threadId || /\b(rm\s+-rf|git\s+(push|reset)|sudo|jira|gitlab|pipeline|producao)\b/i.test(body.scope))) throw new HttpError(400, 'escopo ou thread real invalido');
       const task = tasks.get(body.taskId);
       if (!task || !agent(body.executorId) || task.assigneeId !== body.executorId) throw new HttpError(400, 'tarefa ou executor invalido');
       if (task.dependencies?.some(id => tasks.get(id)?.status !== 'completed')) throw new HttpError(409, 'dependencias pendentes');
