@@ -12,6 +12,7 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- Auditoria persistida de cada etapa de simulacao (criacao, autorizacao, inicio, checkpoint e termino), exibida no painel de tarefas QA.
 - Base isolada do executor supervisionado: idempotência, autorização vinculada ao plano, concorrência por thread, recuperação como interrompida e sem transporte para modelos.
 - Propostas de delegação persistidas para tarefas QA, com decisão humana explícita e contrato inerte de execução futura. Arquivo de tarefas corrompido bloqueia novas gravações até recuperação, evitando sobrescrever dados.
 - Painel operacional de tarefas QA no escritório: criação manual, escolha de responsável, estados, transições permitidas e trilha de auditoria persistida. Nenhuma ação do painel inicia ou instrui agentes.

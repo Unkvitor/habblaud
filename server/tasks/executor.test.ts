@@ -8,7 +8,7 @@ describe('SupervisedExecutor', () => {
   });
   it('simula checkpoint, falha e cancelamento sem processo externo', () => {
     const q=new SupervisedExecutor(); const sim=new DeterministicSimulator(q);
-    const a=q.enqueue({taskId:'a',executorId:'marcelo',threadId:'a',idempotencyKey:'a',planHash:'p'});q.authorize(a.id,'simulated:test','p');expect(sim.run(a.id).result).toBe('simulated:ok');
+    const a=q.enqueue({taskId:'a',executorId:'marcelo',threadId:'a',idempotencyKey:'a',planHash:'p'});q.authorize(a.id,'simulated:test','p');expect(sim.run(a.id).result).toBe('simulated:ok'); expect(q.list()[0].events.map(event => event.type)).toEqual(['created', 'authorized', 'started', 'checkpoint', 'completed']);
     const b=q.enqueue({taskId:'b',executorId:'henrique',threadId:'b',idempotencyKey:'b',planHash:'p'});q.authorize(b.id,'simulated:test','p');expect(sim.run(b.id,'timeout').state).toBe('failed');
   });
 });
