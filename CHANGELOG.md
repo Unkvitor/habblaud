@@ -10,6 +10,10 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- Fundação local de tarefas internas de QA: vínculo explícito a um agente Codex ou Antigravity existente, estados auditáveis, persistência atômica e recuperação passiva após reinício. A fila não envia mensagens nem inicia, retoma ou executa agentes.
+
 ### Gemini / Antigravity no preview
 
 - O chat Gemini usa o CLI `agy` real com `stream-json`, ID nativo explícito, histórico local persistido e retomada sem reenvio automático. O preview separa dados reais da demonstração e mantém modo plano e sandbox.

@@ -21,6 +21,7 @@ import type {
   ShellJob,
   SourceInfo,
   TaskItem,
+  QaTask,
   UpdateStatus,
 } from '../../shared/types';
 import { SHELL_WAIT_TOOL, SPECIAL, type ShellOutcome } from '../../shared/activity';
@@ -80,6 +81,8 @@ export interface OfficeDeps {
   ptys?: () => { status: PtyStatus; list: PtyInfo[] };
   /** Habblaud World (WorldService.meta; ver OfficeSnapshot.meta.world). */
   world?: () => WorldMeta;
+  /** Tarefas internas de QA persistidas fora dos transcripts; só são projetadas no snapshot. */
+  internalTasks?: () => readonly QaTask[];
   now?: () => number;
 }
 
@@ -980,6 +983,13 @@ export class Office {
     }
     const perms = this.deps.permissions?.();
     const real = [...this.agents.values()].map((r) => applyPermission(cloneAgent(r.info), perms?.get(r.info.id)));
+    // Tarefas internas não mudam sessões, transcript ou estado dos agentes. Elas apenas aparecem junto às tarefas
+    // observadas, para reutilizar as visões existentes de agente e sala.
+    const internal = this.deps.internalTasks?.() ?? [];
+    for (const agent of real) {
+      const assigned = internal.filter((task) => task.assigneeId === agent.id).map((task) => ({ id: task.id, title: task.description, status: task.status }));
+      if (assigned.length) agent.tasks = [...agent.tasks, ...assigned];
+    }
     const reach = this.deps.messages?.();
     // Mensagens pelo escritório: principais presentes cuja sessão está com o plugin conectado. No demo quem decide é
     // o simulador; com o recurso desligado, ninguém recebe.

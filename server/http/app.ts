@@ -22,6 +22,8 @@ import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
 import { HOST_WAIT_MS } from '../host-wait';
+import { handleQaTasks } from '../tasks/http';
+import type { QaTaskStore } from '../tasks/store';
 
 export interface ApiDeps {
   office: Office;
@@ -94,6 +96,8 @@ export interface ApiDeps {
    * local com Host local: pela porta do celular, nem com login (403 `local_only`).
    */
   world?: (req: IncomingMessage, res: ServerResponse, url: URL) => void;
+  /** Tarefas internas persistidas; não executam agentes. */
+  qaTasks?: QaTaskStore;
 }
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
@@ -402,6 +406,13 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         };
         sendJson(res, 200, access);
       }
+      return true;
+    }
+    if (path === '/api/qa-tasks' || path.startsWith('/api/qa-tasks/')) {
+      // Alterar a fila interna não executa código, mas fica limitado ao escritório local como os demais controles.
+      if (!deps.qaTasks) sendJson(res, 404, { error: tr('rota desconhecida') });
+      else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('tarefas internas só são gerenciadas pelo próprio computador (http://localhost)')) });
+      else handleQaTasks(req, res, path, deps.qaTasks, (id) => office.get(id));
       return true;
     }
     if (path === '/api/mod/summary') {

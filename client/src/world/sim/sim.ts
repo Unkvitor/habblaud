@@ -760,7 +760,10 @@ export class Sim {
       for (const c of this.chars.values()) {
         if (c.roomId !== room.id || c.leaving) continue;
         accs.add(c.info.account);
-        if (c.info.kind === 'main') for (const t of c.info.tasks) if (board.length < 15) board.push({ status: t.status });
+        if (c.info.kind === 'main') for (const t of c.info.tasks) if (board.length < 15) {
+          // O quadro é propositalmente compacto; os estados internos continuam íntegros na gaveta.
+          board.push({ status: t.status === 'completed' ? 'completed' : t.status === 'in_progress' || t.status === 'awaiting_approval' ? 'in_progress' : 'pending' });
+        }
       }
       room.accounts = [...accs].sort();
       room.board = board;

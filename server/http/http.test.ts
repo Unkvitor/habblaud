@@ -13,6 +13,7 @@ import { createApiHandler, type ApiDeps } from './app';
 import { createRequestGuard, hostAllowed, hostnameOf, isLoopbackHost, originAllowed, parseAllowedHosts } from './guard';
 import { Hub } from './sse';
 import { createStaticHandler, IMMUTABLE, REVALIDATE } from './static';
+import { QaTaskStore } from '../tasks/store';
 
 setQuiet(true);
 
@@ -111,6 +112,28 @@ describe('API HTTP', () => {
     expect(snap.agents.map((a) => a.id)).toEqual(['.claude:1']);
     expect(snap.accounts[0]).toMatchObject({ id: '.claude', sessions: 1 });
     expect(snap.meta.version).toBe('9.9.9');
+  });
+
+  it('tarefas internas ficam vinculadas a agente existente, auditáveis e visíveis no snapshot', async () => {
+    await env.close();
+    env.cleanup();
+    const tasks = new QaTaskStore(null, () => 123);
+    env = await start({ qaTasks: tasks }, { internalTasks: () => tasks.list() });
+    tasks.onChange(() => env.office.markDirty());
+    env.office.addMain({ id: '.codex:marcelo', provider: 'codex', account: '.codex', sessionId: 'marcelo', cwd: '/p/loja', role: 'QA Architect', startedAt: 1, status: 'idle' });
+    const created = await fetch(`${env.base}/api/qa-tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description: 'Planejar regressão', assigneeId: '.codex:marcelo' }) });
+    expect(created.status).toBe(201);
+    const task = ((await created.json()) as { task: { id: string; status: string; events: unknown[] } }).task;
+    expect(task.status).toBe('pending');
+    expect(task.events).toHaveLength(1);
+    const duplicate = await fetch(`${env.base}/api/qa-tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description: 'planejar regressão', assigneeId: '.codex:marcelo' }) });
+    expect(duplicate.status).toBe(409);
+    const moved = await fetch(`${env.base}/api/qa-tasks/${task.id}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ status: 'assigned' }) });
+    expect(moved.status).toBe(200);
+    const snapshot = await snapshotOf(env.base);
+    expect(snapshot.agents.find((agent) => agent.id === '.codex:marcelo')?.tasks).toContainEqual({ id: task.id, title: 'Planejar regressão', status: 'assigned' });
+    const invalidAssignee = await fetch(`${env.base}/api/qa-tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description: 'Não pode', assigneeId: '.claude:1' }) });
+    expect(invalidAssignee.status).toBe(400);
   });
 
   it('GET /api/stream envia retry, snapshot e feed; depois as mudanças', async () => {

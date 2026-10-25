@@ -105,7 +105,7 @@ export interface AskQuestion {
   options: Array<{ index: number; label: string; description?: string }>;
 }
 
-export type TaskStatus = 'pending' | 'in_progress' | 'completed';
+export type TaskStatus = 'pending' | 'assigned' | 'in_progress' | 'blocked' | 'awaiting_approval' | 'completed';
 
 export interface TaskItem {
   id: string;
@@ -113,6 +113,26 @@ export interface TaskItem {
   status: TaskStatus;
   /** Forma no gerúndio ("Escrevendo testes"), quando disponível. */
   activeForm?: string;
+}
+
+/** Evento imutável da trilha de auditoria de uma tarefa interna de QA. */
+export interface QaTaskEvent {
+  id: string;
+  at: number;
+  type: 'created' | 'status_changed';
+  from?: TaskStatus;
+  to: TaskStatus;
+}
+
+/** Tarefa interna persistida pelo Habblaud. Ela não dispara nem retoma agentes. */
+export interface QaTask {
+  id: string;
+  description: string;
+  assigneeId: string;
+  status: TaskStatus;
+  createdAt: number;
+  updatedAt: number;
+  events: QaTaskEvent[];
 }
 
 export interface AgentStats {
