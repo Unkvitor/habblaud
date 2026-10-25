@@ -29,6 +29,8 @@ export class QaTasksPanel {
   private readonly list: HTMLElement;
   private readonly description: HTMLTextAreaElement;
   private readonly assignee: HTMLSelectElement;
+  private readonly parent: HTMLSelectElement;
+  private readonly dependencies: HTMLSelectElement;
   private open = false;
   private loading = false;
 
@@ -38,8 +40,10 @@ export class QaTasksPanel {
     this.status = h('p', { attrs: { role: 'status', 'aria-live': 'polite' } });
     this.description = h('textarea', { attrs: { rows: 3, maxlength: 2000, placeholder: tr('Descreva a tarefa de QA') } });
     this.assignee = h('select', { attrs: { 'aria-label': tr('Responsável') } });
+    this.parent = h('select', { attrs: { 'aria-label': tr('Tarefa principal') } }, h('option', { text: tr('Sem tarefa principal'), attrs: { value: '' } }));
+    this.dependencies = h('select', { attrs: { 'aria-label': tr('Dependências',), multiple: 'multiple', size: 3 } });
     const create = h('button', { class: 'ui-btn ui-btn--primary', type: 'submit', text: tr('Criar tarefa') });
-    const form = h('form', { class: 'qa-tasks__form', on: { submit: (event: Event) => { event.preventDefault(); void this.create(); } } }, this.description, this.assignee, create);
+    const form = h('form', { class: 'qa-tasks__form', on: { submit: (event: Event) => { event.preventDefault(); void this.create(); } } }, this.description, this.assignee, this.parent, this.dependencies, create);
     this.list = h('ol', { class: 'qa-tasks__list' });
     this.el = h('section', { class: 'ui-panel qa-tasks', hidden: true, attrs: { 'aria-label': tr('Gestão de tarefas QA') } }, h('header', {}, h('strong', { text: tr('Tarefas QA') }), close), h('p', { class: 'native-hint', text: tr('Ações manuais não enviam prompts nem executam agentes.') }), form, this.status, this.list);
     ctx.store.on('snapshot', () => { if (this.open) void this.load(); });
@@ -58,10 +62,11 @@ export class QaTasksPanel {
   private async load(): Promise<void> {
     if (this.loading) return;
     this.loading = true; this.agents();
-    try { const tasks=(await request('/api/qa-tasks')).tasks ?? []; const executions=((await request('/api/qa-executions') as any).executions ?? []); this.render(tasks, executions); this.status.textContent = ''; }
+    try { const tasks=(await request('/api/qa-tasks')).tasks ?? []; this.taskChoices(tasks); const executions=((await request('/api/qa-executions') as any).executions ?? []); this.render(tasks, executions); this.status.textContent = ''; }
     catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao carregar tarefas.'); }
     finally { this.loading = false; }
   }
+  private taskChoices(tasks: QaTask[]): void { const parent=this.parent.value; const deps=[...this.dependencies.selectedOptions].map(x=>x.value); this.parent.replaceChildren(h('option',{text:tr('Sem tarefa principal'),attrs:{value:''}}),...tasks.map(t=>h('option',{text:t.description,attrs:{value:t.id}}))); this.dependencies.replaceChildren(...tasks.map(t=>h('option',{text:t.description,attrs:{value:t.id}}))); this.parent.value=parent; for(const o of this.dependencies.options)o.selected=deps.includes(o.value); }
   private render(tasks: QaTask[], executions: any[] = []): void {
     this.list.replaceChildren(...tasks.map((task) => {
       const title = h('strong', { text: task.description });
@@ -79,7 +84,7 @@ export class QaTasksPanel {
   private async create(): Promise<void> {
     if (!this.description.value.trim() || !this.assignee.value) return;
     try {
-      await request('/api/qa-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: this.description.value, assigneeId: this.assignee.value }) });
+      await request('/api/qa-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: this.description.value, assigneeId: this.assignee.value, parentId: this.parent.value || undefined, dependencies: [...this.dependencies.selectedOptions].map(option => option.value) }) });
       this.description.value = ''; await this.load();
     } catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao criar tarefa.'); }
   }
