@@ -55,4 +55,15 @@ describe('QaTaskStore', () => {
       expect(corrupt.list()).toEqual([]);
     } finally { tmp.cleanup(); }
   });
+
+  it('registra proposta e decisão humana sem criar execução', () => {
+    const tasks = new QaTaskStore(null, () => 10);
+    const task = tasks.create({ description: 'Revisar evidência', assigneeId: 'codex:marcelo' });
+    const proposed = tasks.proposeDelegation(task.id, { fromAgentId: 'codex:marcelo', toAgentId: 'gemini:1' });
+    expect(proposed.delegation).toMatchObject({ status: 'proposed', toAgentId: 'gemini:1' });
+    const approved = tasks.decideDelegation(task.id, 'approved', 'human');
+    expect(approved.delegation).toMatchObject({ status: 'approved', decidedBy: 'human' });
+    expect(approved.execution).toBeUndefined();
+    expect(approved.events.map((event) => event.type)).toEqual(['created', 'delegation_proposed', 'delegation_decided']);
+  });
 });

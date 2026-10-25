@@ -14,11 +14,21 @@ export function handleQaTasks(req: IncomingMessage, res: ServerResponse, path: s
     if (method === 'GET') return void sendJson(res, 200, { tasks: store.list() });
     if (method !== 'POST') return void methodNotAllowed(res, 'GET, POST');
     readJson(req).then((body) => {
-      const input = body as { description?: unknown; assigneeId?: unknown };
+      const input = body as { description?: unknown; assigneeId?: unknown; parentId?: unknown; dependencies?: unknown; requesterId?: unknown; originAgentId?: unknown };
       if (!supportedAssignee(typeof input.assigneeId === 'string' ? agent(input.assigneeId) : undefined)) throw new HttpError(400, tr('responsável precisa ser um agente Codex ou Antigravity existente'));
       sendJson(res, 201, { task: store.create(input) });
     }).catch((error) => sendTaskError(res, error));
     return;
+  }
+  const delegation = /^\/api\/qa-tasks\/([^/]+)\/delegation$/.exec(path);
+  if (delegation) {
+    if (method !== 'POST') return void methodNotAllowed(res, 'POST');
+    readJson(req).then((body) => {
+      const value = body as { action?: unknown; toAgentId?: unknown; fromAgentId?: unknown; decidedBy?: unknown };
+      const task = value.action === 'propose' ? store.proposeDelegation(decodeURIComponent(delegation[1]), value) :
+        (value.action === 'approve' || value.action === 'reject') ? store.decideDelegation(decodeURIComponent(delegation[1]), value.action === 'approve' ? 'approved' : 'rejected', value.decidedBy) : (() => { throw new QaTaskError('invalid', tr('ação de delegação inválida')); })();
+      sendJson(res, 200, { task });
+    }).catch((error) => sendTaskError(res, error)); return;
   }
   const match = /^\/api\/qa-tasks\/([^/]+)$/.exec(path);
   if (!match) return void sendJson(res, 404, { error: tr('rota desconhecida') });

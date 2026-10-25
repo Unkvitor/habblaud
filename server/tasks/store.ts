@@ -42,12 +42,12 @@ function validTask(value: unknown): value is QaTask {
     typeof task.createdAt === 'number' &&
     typeof task.updatedAt === 'number' &&
     Array.isArray(task.events) &&
-    task.events.every((event) => event && typeof event.id === 'string' && typeof event.at === 'number' && (event.type === 'created' || event.type === 'status_changed') && isStatus(event.to) && (event.from === undefined || isStatus(event.from)))
+    task.events.every((event) => event && typeof event.id === 'string' && typeof event.at === 'number' && ['created', 'status_changed', 'delegation_proposed', 'delegation_decided'].includes(event.type) && isStatus(event.to) && (event.from === undefined || isStatus(event.from)))
   );
 }
 
 export class QaTaskError extends Error {
-  constructor(readonly code: 'invalid' | 'duplicate' | 'not-found' | 'invalid-transition', message: string) {
+  constructor(readonly code: 'invalid' | 'duplicate' | 'not-found' | 'invalid-transition' | 'corrupt', message: string) {
     super(message);
   }
 }
@@ -56,6 +56,7 @@ export class QaTaskError extends Error {
 export class QaTaskStore {
   private tasks = new Map<string, QaTask>();
   private listeners = new Set<() => void>();
+  private corrupt = false;
 
   constructor(private readonly file: string | null, private readonly now: () => number = Date.now) {}
 
@@ -66,7 +67,7 @@ export class QaTaskStore {
       if (raw.version !== 1 || !Array.isArray(raw.tasks)) return;
       for (const task of raw.tasks) if (validTask(task) && this.tasks.size < MAX_TASKS) this.tasks.set(task.id, copy(task));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') this.corrupt = true;
     }
   }
 
@@ -79,7 +80,8 @@ export class QaTaskStore {
     return [...this.tasks.values()].sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)).map(copy);
   }
 
-  create(input: { description?: unknown; assigneeId?: unknown }): QaTask {
+  create(input: { description?: unknown; assigneeId?: unknown; parentId?: unknown; dependencies?: unknown; requesterId?: unknown; originAgentId?: unknown }): QaTask {
+    this.writable();
     const description = cleanDescription(input.description);
     if (!description || typeof input.assigneeId !== 'string' || !input.assigneeId) throw new QaTaskError('invalid', tr('esperado {description, assigneeId}'));
     if (this.tasks.size >= MAX_TASKS) throw new QaTaskError('invalid', tr('limite de tarefas internas atingido'));
@@ -88,6 +90,10 @@ export class QaTaskStore {
       throw new QaTaskError('duplicate', tr('já existe uma tarefa aberta igual para este agente'));
     }
     const at = this.now();
+    const parentId = typeof input.parentId === 'string' && input.parentId ? input.parentId : undefined;
+    if (parentId && !this.tasks.has(parentId)) throw new QaTaskError('not-found', tr('tarefa principal não encontrada'));
+    const dependencies = Array.isArray(input.dependencies) && input.dependencies.every((id) => typeof id === 'string') ? [...new Set(input.dependencies as string[])] : [];
+    if (dependencies.some((id) => !this.tasks.has(id) || id === parentId)) throw new QaTaskError('invalid', tr('dependência de tarefa inválida'));
     const task: QaTask = {
       id: `qa-${randomUUID()}`,
       description,
@@ -96,6 +102,8 @@ export class QaTaskStore {
       createdAt: at,
       updatedAt: at,
       events: [{ id: randomUUID(), at, type: 'created', to: 'pending' }],
+      ...(parentId ? { parentId } : {}), ...(dependencies.length ? { dependencies } : {}),
+      ...(typeof input.requesterId === 'string' ? { requesterId: input.requesterId } : {}), ...(typeof input.originAgentId === 'string' ? { originAgentId: input.originAgentId } : {}),
     };
     this.tasks.set(task.id, task);
     this.persistAndNotify();
@@ -103,6 +111,7 @@ export class QaTaskStore {
   }
 
   transition(id: string, status: unknown): QaTask {
+    this.writable();
     const task = this.tasks.get(id);
     if (!task) throw new QaTaskError('not-found', tr('tarefa interna não encontrada'));
     if (!isStatus(status)) throw new QaTaskError('invalid', tr('estado de tarefa inválido'));
@@ -115,6 +124,21 @@ export class QaTaskStore {
     this.persistAndNotify();
     return copy(task);
   }
+
+  proposeDelegation(id: string, input: { toAgentId?: unknown; fromAgentId?: unknown }): QaTask {
+    this.writable(); const task = this.required(id);
+    if (typeof input.toAgentId !== 'string' || !input.toAgentId || task.delegation?.status === 'proposed') throw new QaTaskError('invalid', tr('proposta de delegação inválida'));
+    const at = this.now(); task.delegation = { id: randomUUID(), toAgentId: input.toAgentId, ...(typeof input.fromAgentId === 'string' ? { fromAgentId: input.fromAgentId } : {}), status: 'proposed', proposedAt: at };
+    task.updatedAt = at; task.events.push({ id: randomUUID(), at, type: 'delegation_proposed', to: task.status }); this.persistAndNotify(); return copy(task);
+  }
+  decideDelegation(id: string, decision: 'approved' | 'rejected', decidedBy: unknown): QaTask {
+    this.writable(); const task = this.required(id); const delegation = task.delegation;
+    if (!delegation || delegation.status !== 'proposed' || typeof decidedBy !== 'string' || !decidedBy) throw new QaTaskError('invalid-transition', tr('não há proposta pendente para decidir'));
+    const at = this.now(); delegation.status = decision; delegation.decidedAt = at; delegation.decidedBy = decidedBy; task.updatedAt = at;
+    task.events.push({ id: randomUUID(), at, type: 'delegation_decided', to: task.status }); this.persistAndNotify(); return copy(task);
+  }
+  private required(id: string): QaTask { const task = this.tasks.get(id); if (!task) throw new QaTaskError('not-found', tr('tarefa interna não encontrada')); return task; }
+  private writable(): void { if (this.corrupt) throw new QaTaskError('corrupt', tr('arquivo de tarefas corrompido; recupere-o antes de alterar dados')); }
 
   private persistAndNotify(): void {
     if (this.file) {

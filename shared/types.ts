@@ -119,9 +119,33 @@ export interface TaskItem {
 export interface QaTaskEvent {
   id: string;
   at: number;
-  type: 'created' | 'status_changed';
+  type: 'created' | 'status_changed' | 'delegation_proposed' | 'delegation_decided';
   from?: TaskStatus;
   to: TaskStatus;
+}
+
+export interface QaDelegation {
+  id: string;
+  fromAgentId?: string;
+  toAgentId: string;
+  status: 'proposed' | 'approved' | 'rejected';
+  proposedAt: number;
+  decidedAt?: number;
+  decidedBy?: string;
+}
+
+/** Contrato inerte para P2.4; nenhum executor o lê nesta versão. */
+export interface QaExecutionPlan {
+  executionId: string;
+  executorId: string;
+  originalThreadId?: string;
+  status: 'not_authorized' | 'authorized' | 'running' | 'completed' | 'failed' | 'cancelled';
+  checkpoint?: string;
+  result?: string;
+  error?: string;
+  cancellationRequested?: boolean;
+  concurrencyLimit: number;
+  userAuthorized: boolean;
 }
 
 /** Tarefa interna persistida pelo Habblaud. Ela não dispara nem retoma agentes. */
@@ -133,6 +157,12 @@ export interface QaTask {
   createdAt: number;
   updatedAt: number;
   events: QaTaskEvent[];
+  parentId?: string;
+  requesterId?: string;
+  originAgentId?: string;
+  dependencies?: string[];
+  delegation?: QaDelegation;
+  execution?: QaExecutionPlan;
 }
 
 export interface AgentStats {
