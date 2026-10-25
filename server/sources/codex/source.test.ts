@@ -33,8 +33,9 @@ function setup(opts: { names?: string[]; noLocks?: boolean; env?: (dirs: string[
   const now = () => clock;
   const late: { office?: Office } = {};
   const accounts = new AccountsService({ dirs: [], home: home.home, env: {}, now, onChange: () => late.office?.markDirty() });
+  const names = new NameStore(null);
   const office = new Office({
-    names: new NameStore(null),
+    names,
     version: 'teste',
     startedAt: clock,
     accounts: (s) => accounts.list(s),
@@ -52,6 +53,7 @@ function setup(opts: { names?: string[]; noLocks?: boolean; env?: (dirs: string[
     home,
     homes,
     accounts,
+    names,
     office,
     source,
     notices,
@@ -256,6 +258,16 @@ describe('fonte do Codex: presença pelos locks', () => {
     ctx.home.append(path, [R.taskStarted('t2', ctx.now()), R.user(T, 't2', 'u2', 'voltei', ctx.now())]);
     ctx.poll();
     expect(ctx.agent()).toMatchObject({ status: 'working' });
+  });
+
+  it('restaura como ocioso um lock antigo que tem identidade persistida após reboot', () => {
+    const ctx = setup();
+    const old = ctx.now() - 13 * 3600_000;
+    ctx.home.rollout(T, [R.meta(T, { at: old, cwd: '/projetos/qa' }), R.user(T, 't', 'u', 'retomar', old), R.taskComplete('t', old + 1)], { mtime: old + 1 });
+    ctx.home.lock(T, old);
+    ctx.names.remember(T, { name: 'Marcelo - QA Architect', look: 'm' });
+    ctx.source.boot();
+    expect(ctx.agent()).toMatchObject({ name: 'Marcelo - QA Architect', status: 'idle', roomId: '/projetos/qa' });
   });
 
   it('thread antigo retomado agora (lock novo, rollout parado há dias) aparece', () => {
