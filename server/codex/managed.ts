@@ -7,7 +7,7 @@ import { THREAD_ID } from '../messages/codex';
 import { maskSecrets } from '../../shared/activity';
 import { tr } from '../../shared/i18n';
 
-type Json = Record<string, any>;
+export type Json = Record<string, any>;
 export function insideWorkspace(cwd: string, root: string): boolean {
   const rel = relative(resolve(root), resolve(cwd));
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !rel.startsWith(sep));
@@ -128,6 +128,42 @@ export class ManagedCodex extends EventEmitter {
       if (thread.status?.type === 'active') throw new Error(tr('Aguarde o turno atual concluir.'));
       await p.call('turn/start', { threadId: id, input: [{ type: 'text', text, text_elements: [] }] });
     } finally { this.busy.delete(id); }
+  }
+  /** Starts one approved turn and resolves only when the App Server reports its terminal event. */
+  async execute(id: string, text: string, onUpdate?: (event: Json) => void): Promise<Json> {
+    if (!this.managed.has(id) || this.busy.has(id)) throw new Error(tr('Sessão não gerenciada ou envio em andamento.'));
+    if (typeof text !== 'string' || !text.trim() || text.length > 32_000) throw new Error(tr('Mensagem vazia ou longa demais.'));
+    this.busy.add(id);
+    let listener: ((event: Json) => void) | undefined;
+    try {
+      const { p, thread } = await this.check(id);
+      if (!this.loaded.has(id)) {
+        if (thread.status?.type !== 'notLoaded') throw new Error(tr('Sessão aberta em outro cliente; mantenha o controle no cliente de origem.'));
+        await p.call('thread/resume', { threadId: id, excludeTurns: true, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: 'read-only',
+          config: { 'features.multi_agent': false } });
+        this.loaded.add(id);
+      }
+      if (thread.status?.type === 'active') throw new Error(tr('Aguarde o turno atual concluir.'));
+      const result = await new Promise<Json>((resolve, reject) => {
+        const timer = setTimeout(() => { this.off('update', listener!); reject(new Error(tr('App Server: turno excedeu o tempo permitido.'))); }, 120_000);
+        listener = (event) => {
+          if (event.threadId !== id) return;
+          onUpdate?.(event);
+          if (event.method === 'turn/completed') { clearTimeout(timer); this.off('update', listener!); resolve(event); }
+          if (event.method === 'turn/failed' || event.method === 'turn/cancelled') { clearTimeout(timer); this.off('update', listener!); reject(new Error(maskSecrets(String(event.error ?? event.method)))); }
+        };
+        this.on('update', listener);
+        p.call('turn/start', { threadId: id, input: [{ type: 'text', text, text_elements: [] }] }).catch((error) => {
+          clearTimeout(timer); this.off('update', listener!); reject(error);
+        });
+      });
+      return result;
+    } finally { this.busy.delete(id); }
+  }
+  async interrupt(id: string, turnId?: string): Promise<void> {
+    if (!this.managed.has(id)) throw new Error(tr('Sessão não gerenciada.'));
+    const p = await this.connect();
+    await p.call('turn/interrupt', { threadId: id, ...(turnId ? { turnId } : {}) });
   }
   approvals(): Json[] { return this.protocol?.approvals() ?? []; }
   decide(identity: any, decision: any): void {

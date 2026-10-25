@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from '../test/fixtures';
 import { DeterministicSimulator, ExecutionError, SupervisedExecutor } from './executor';
+import { RealCodexExecutor } from './real-executor';
 describe('SupervisedExecutor', () => {
   it('exige autorização vinculada ao plano, concorrência e não repete após crash', () => {
     const q=new SupervisedExecutor({maxConcurrency:1,now:()=>1}); const a=q.enqueue({taskId:'t',executorId:'marcelo',threadId:'thread-a',idempotencyKey:'k',planHash:'p'});
@@ -22,5 +23,14 @@ describe('SupervisedExecutor', () => {
       const restored=new SupervisedExecutor({file}); restored.load(); expect(restored.list()[0]).toMatchObject({id:execution.id,state:'completed',result:'simulated:ok'});
       writeFileSync(file,'{bad'); const corrupt=new SupervisedExecutor({file}); corrupt.load(); expect(()=>corrupt.enqueue({taskId:'task',executorId:'agent',threadId:'other',idempotencyKey:'other',planHash:'plan'})).toThrow(ExecutionError);
     } finally { tmp.cleanup(); }
+  });
+  it('encaminha somente plano real autorizado ao transporte Codex e registra progresso', async () => {
+    const q=new SupervisedExecutor();
+    const execution=q.enqueue({taskId:'task',executorId:'marcelo',threadId:'thread',idempotencyKey:'real-key',planHash:'real-plan',mode:'real',scope:'Leia apenas o arquivo README.md e informe o titulo.'} as any);
+    expect(()=>q.authorize(execution.id,'simulated:test','real-plan')).toThrow(ExecutionError);
+    q.authorizeHuman(execution.id,'human:local-ui','real-plan');
+    const transport={execute:async (_thread:string,_scope:string,onUpdate:(event:any)=>void)=>{onUpdate({method:'item/agentMessage/delta',text:'progresso'});return {method:'turn/completed',text:'resultado'};}};
+    await new RealCodexExecutor(q,transport as any).run(execution.id);
+    expect(q.list()[0]).toMatchObject({state:'completed',result:'resultado',checkpoint:'progresso',authorizationKind:'human'});
   });
 });

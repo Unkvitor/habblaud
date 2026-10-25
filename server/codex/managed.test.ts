@@ -59,3 +59,21 @@ it('creates a session in the requested isolated real directory and rejects escap
     expect(calls).toHaveLength(1);
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
+it('resolves a supervised turn only after the native completion event', async () => {
+  const id = '11111111-1111-1111-1111-111111111111';
+  const calls: string[] = [];
+  const c = new ManagedCodex('not-executed', '/work/qa', '/nonexistent/native-state.json');
+  (c as any).managed.add(id);
+  (c as any).ready = Promise.resolve({ call: async (method: string) => {
+    calls.push(method);
+    if (method === 'thread/read') return { thread: { id, cwd: '/work/qa', status: { type: 'notLoaded' } } };
+    if (method === 'thread/resume') return {};
+    if (method === 'turn/start') {
+      setTimeout(() => (c as any).onEvent({ method: 'turn/completed', params: { threadId: id, turnId: 'turn-1' } }), 0);
+      return { turn: { id: 'turn-1' } };
+    }
+    throw new Error(`unexpected ${method}`);
+  } });
+  await expect(c.execute(id, 'tarefa pequena')).resolves.toMatchObject({ method: 'turn/completed', threadId: id });
+  expect(calls).toEqual(['thread/read', 'thread/resume', 'turn/start']);
+});
