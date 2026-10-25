@@ -311,6 +311,7 @@ const geminiManager =
 const geminiHttp = geminiManager ? createGeminiHttp(geminiManager, geminiDemoEnabled ? 'demo' : 'real') : undefined;
 if(geminiManager && geminiRealEnabled && !geminiDemoEnabled){
   geminiManager.on('update',()=>antigravity?.setManagedSessions(geminiManager.list()));
+  antigravity?.setManagedSessions(geminiManager.list());
 }
 const queueCodex = codexBin ? createCodexQueueRunner(codexBin) : undefined;
 const messages = config.messages

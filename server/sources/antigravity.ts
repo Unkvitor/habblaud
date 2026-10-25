@@ -8,7 +8,8 @@ import type { AgentStatus, SourceInfo } from '../../shared/types';
 import { maskSecrets } from '../../shared/activity';
 import { tr } from '../../shared/i18n';
 
-type Row = { session: string; workspace: string; model: string; status: string; event: string; last_seen: string };
+type Row = { session: string; workspace: string; model: string; status: string; event: string; last_seen: string; managed?: boolean };
+type ManagedSession = { id:string; cwd:string; nativeId?:string; model?:string; status:string; createdAt:number; updatedAt?:number };
 const WORKING_FRESHNESS_MS = 60_000;
 export function hubOrigin(inDocker: boolean, explicit?: string): string {
   const url = new URL(explicit || (inDocker ? 'http://host.docker.internal:4748' : 'http://127.0.0.1:4748'));
@@ -36,23 +37,69 @@ export class AntigravitySource implements AgentSource {
   private rows: Row[] = [];
   private ids = new Set<string>();
   private account = 'qa-hub-antigravity';
-  private managed: Array<{cwd:string;nativeId?:string;status:string}> = [];
-  setManagedSessions(sessions:Array<{cwd:string;nativeId?:string;status:string}>):void {
-    this.managed=sessions;
-    for(const id of this.ids){
-      const agent=this.opts.office.get(id);
-      if(!agent)continue;
-      const active=sessions.some(s=>s.cwd===agent.roomId&&s.status==='working');
-      const own=sessions.find(s=>s.nativeId===agent.sessionId);
-      if(active)agent.status='working';
-      else if(own)agent.status='idle';
-    }
-    this.opts.office.markDirty();
+  private managed: ManagedSession[] = [];
+  setManagedSessions(sessions:ManagedSession[]):void {
+    this.managed=sessions.map(session=>({...session}));
+    this.reconcile();
   }
   private executionState(row:Row):AgentStatus {
     if(this.managed.some(s=>s.cwd===row.workspace&&s.status==='working'))return 'working';
     if(this.managed.some(s=>s.nativeId===row.session))return 'idle';
     return state(row);
+  }
+  private managedRows(): Row[] {
+    return this.managed
+      .filter(session => session.cwd.startsWith('/') && Number.isFinite(session.createdAt))
+      .map(session => ({
+        session: session.nativeId || `managed:${session.id}`,
+        workspace: posix.normalize(session.cwd).replace(/\/$/, '') || '/',
+        model: maskSecrets((session.model || '').slice(0, 128)),
+        status: session.status === 'working' ? 'trabalhando' : 'sem_sinal',
+        event: session.status === 'working' ? 'ManagedExecution' : 'ManagedSession',
+        last_seen: new Date(session.updatedAt ?? session.createdAt).toISOString(),
+        managed: true,
+      }));
+  }
+  private reconcile(): void {
+    const observations = new Map<string, Row>();
+    for (const row of this.rows) observations.set(row.session, row);
+    // A persisted managed conversation is local evidence, not Hub telemetry. It is
+    // deliberately retained across reboot so its character does not depend on a
+    // former agy process or on the Hub having restarted first.
+    for (const row of this.managedRows()) observations.set(row.session, row);
+    const rows = [...observations.values()];
+    if (rows.length) {
+      const [account] = this.opts.accounts.setProviderAccounts(this.provider, [{dir:this.opts.origin,detected:{id:this.account,configDir:this.opts.origin,short:'G',name:'Antigravity CLI · Gemini',color:'#5cc97b'}}]);
+      this.account = account.id;
+    } else {
+      this.opts.accounts.setProviderAccounts(this.provider, []);
+    }
+    const latestIdle = new Map<string, Row>();
+    const latest = new Map<string, Row>();
+    for (const row of rows) {
+      const current = latest.get(row.workspace);
+      if (!current || Date.parse(row.last_seen) > Date.parse(current.last_seen)) latest.set(row.workspace,row);
+      if (this.executionState(row) === 'working') continue;
+      const previous = latestIdle.get(row.workspace);
+      if (!previous || Date.parse(row.last_seen) > Date.parse(previous.last_seen)) latestIdle.set(row.workspace, row);
+    }
+    const present = new Set<string>();
+    for (const row of rows.filter(row => (this.executionState(row) === 'working' && (latest.get(row.workspace)===row || state(row)==='working')) || latestIdle.get(row.workspace) === row)) {
+      const id = 'antigravity:' + (latest.get(row.workspace)===row?'workspace':row.session) + ':' + hash32(row.workspace); present.add(id);
+      const at = Date.parse(row.last_seen);
+      const managed = row.managed === true;
+      this.opts.office.addMain({id,name:'Gemini',provider:this.provider,account:this.account,sessionId:row.session,cwd:row.workspace,role:managed ? tr('Antigravity CLI · conversa gerenciada persistida') : tr('Antigravity CLI · telemetria do QA Hub'),startedAt:at,status:this.executionState(row)});
+      const agent = this.opts.office.get(id)!;
+      agent.sessionId = row.session;
+      agent.name = 'Gemini'; agent.model = row.model; agent.lastEventAt = at;
+      agent.telemetry = {status:row.status,event:row.event,lastSeen:row.last_seen,connected:managed ? false : this.online};
+      agent.title = managed
+        ? tr('Modelo: {0}. Conversa persistida; nenhum processo Antigravity é presumido ativo.', [row.model || tr('não informado')])
+        : tr('Modelo: {0}. Último evento: {1} · {2} · {3}', [row.model || tr('não informado'),row.event,row.status,row.last_seen]);
+    }
+    for (const id of this.ids) if (!present.has(id)) this.opts.office.closeMain(id);
+    this.ids = present;
+    this.opts.office.markDirty();
   }
   constructor(private opts: { office: Office; accounts: AccountsService; origin: string; fetchStatus?: () => Promise<unknown> }) {}
   async start(): Promise<void> {
@@ -78,42 +125,14 @@ export class AntigravitySource implements AgentSource {
       const unique = new Map<string,Row>();
       for (const rawRow of raw.antigravity.sessions) { const row = normalize(rawRow); if (row) unique.set(row.session,row); }
       this.rows = [...unique.values()];
-      if (this.rows.length) {
-        const [account] = this.opts.accounts.setProviderAccounts(this.provider, [{dir:this.opts.origin,detected:{id:this.account,configDir:this.opts.origin,short:'G',name:'Antigravity CLI · Gemini',color:'#5cc97b'}}]);
-        this.account = account.id;
-      }
-      // The Hub returns observed conversation history, not a process list.
-      // Show the latest idle observation per workspace and every working session.
-      const latestIdle = new Map<string, Row>();
-      const latest = new Map<string, Row>();
-      for (const row of this.rows) {
-        const current = latest.get(row.workspace);
-        if (!current || Date.parse(row.last_seen) > Date.parse(current.last_seen)) latest.set(row.workspace,row);
-        if (this.executionState(row) === 'working') continue;
-        const previous = latestIdle.get(row.workspace);
-        if (!previous || Date.parse(row.last_seen) > Date.parse(previous.last_seen)) latestIdle.set(row.workspace, row);
-      }
-      const present = new Set<string>();
-      for (const row of this.rows.filter(row => (this.executionState(row) === 'working' && (latest.get(row.workspace)===row || state(row)==='working')) || latestIdle.get(row.workspace) === row)) {
-        const id = 'antigravity:' + (latest.get(row.workspace)===row?'workspace':row.session) + ':' + hash32(row.workspace); present.add(id);
-        const at = Date.parse(row.last_seen);
-        this.opts.office.addMain({id,name:'Gemini',provider:this.provider,account:this.account,sessionId:row.session,cwd:row.workspace,role:tr('Antigravity CLI · telemetria do QA Hub'),startedAt:at,status:this.executionState(row)});
-        const agent = this.opts.office.get(id)!;
-        agent.sessionId = row.session;
-        agent.name = 'Gemini'; agent.model = row.model; agent.lastEventAt = at;
-        agent.telemetry = {status:row.status,event:row.event,lastSeen:row.last_seen,connected:true};
-        agent.title = tr('Modelo: {0}. Último evento: {1} · {2} · {3}', [row.model || tr('não informado'),row.event,row.status,row.last_seen]);
-      }
-      // Stop/sem_sinal never remove a reported session. Removal requires a successful authoritative listing without it.
-      for (const id of this.ids) if (!present.has(id)) this.opts.office.closeMain(id);
-      this.ids = present;
-      if (!this.rows.length) this.opts.accounts.setProviderAccounts(this.provider, []);
+      this.reconcile();
     } catch {
       this.online = false; this.error = tr('QA Hub indisponível; exibindo a última observação.');
       for (const id of this.ids) {
         const agent = this.opts.office.get(id);
         if (agent?.telemetry) agent.telemetry = {...agent.telemetry,connected:false};
       }
+      this.reconcile();
     } finally { this.polling = false; this.opts.office.markDirty(); }
   }
 }

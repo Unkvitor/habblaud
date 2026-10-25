@@ -52,12 +52,22 @@ describe('real Hub sessions in the office', () => {
   });
 });
 describe('office representation versus Hub history', () => {
+  it('restores a persisted managed Gemini when the Hub is unavailable after reboot', async () => {
+    const {office,source,set}=setup();
+    set(new Error('Hub is down'));
+    source.setManagedSessions([{id:'5f48fda9-9daa-4dfd-a807-9dbbdc20d53c',cwd:workspace,nativeId:'native-conversation',model:'gemini-4-argon-medium',status:'idle',createdAt:Date.parse('2026-10-22T20:00:00-03:00')}]);
+    await source.poll(); office.tick();
+    const gemini=office.list().find(agent=>agent.provider==='antigravity');
+    expect(gemini).toMatchObject({name:'Gemini',sessionId:'native-conversation',model:'gemini-4-argon-medium',status:'idle',roomId:workspace,telemetry:{event:'ManagedSession',connected:false}});
+    expect(gemini?.role).toContain('persistida');
+    expect(source.sources()[0]).toMatchObject({sessions:0,ok:false});
+  });
   it('uses managed execution while Hub events are stale, then returns to idle',async()=>{
     const {office,source}=setup();await source.poll();
-    source.setManagedSessions([{cwd:workspace,status:'working'}]);
+    source.setManagedSessions([{id:'0eb3b8ce-f5f8-4b08-abce-25d6b5a1d65a',cwd:workspace,status:'working',createdAt:Date.now()}]);
     expect(office.list()[0].status).toBe('working');
     await source.poll();expect(office.list()[0].status).toBe('working');
-    source.setManagedSessions([{cwd:workspace,nativeId:session.session,status:'idle'}]);
+    source.setManagedSessions([{id:'0eb3b8ce-f5f8-4b08-abce-25d6b5a1d65a',cwd:workspace,nativeId:session.session,status:'idle',createdAt:Date.now()}]);
     expect(office.list()[0].status).toBe('idle');
   });
   it('keeps the workspace character identity when the latest conversation changes',async()=>{
