@@ -14,6 +14,7 @@ import { createRequestGuard, hostAllowed, hostnameOf, isLoopbackHost, originAllo
 import { Hub } from './sse';
 import { createStaticHandler, IMMUTABLE, REVALIDATE } from './static';
 import { QaTaskStore } from '../tasks/store';
+import { SupervisedExecutor } from '../tasks/executor';
 
 setQuiet(true);
 
@@ -134,6 +135,23 @@ describe('API HTTP', () => {
     expect(snapshot.agents.find((agent) => agent.id === '.codex:marcelo')?.tasks).toContainEqual({ id: task.id, title: 'Planejar regressão', status: 'assigned' });
     const invalidAssignee = await fetch(`${env.base}/api/qa-tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description: 'Não pode', assigneeId: '.claude:1' }) });
     expect(invalidAssignee.status).toBe(400);
+  });
+
+  it('executa o ciclo simulado pela API sem tocar em agentes', async () => {
+    await env.close(); env.cleanup();
+    const tasks = new QaTaskStore(null, () => 1); const queue = new SupervisedExecutor({ now: () => 2 });
+    env = await start({ qaTasks: tasks, qaExecutions: queue }, { internalTasks: () => tasks.list() });
+    env.office.addMain({ id: '.codex:marcelo', provider: 'codex', account: '.codex', sessionId: 'marcelo', cwd: '/p/loja', role: 'QA Architect', startedAt: 1, status: 'idle' });
+    const task = tasks.create({ description: '[teste] simulação', assigneeId: '.codex:marcelo' });
+    const plan = { taskId: task.id, executorId: '.codex:marcelo', threadId: 'sim-thread', idempotencyKey: 'integration-1', planHash: 'plan-1', identity: 'simulated:test' };
+    const created = await fetch(`${env.base}/api/qa-executions`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(plan) });
+    expect(created.status).toBe(201); const execution = ((await created.json()) as any).execution;
+    const duplicate = await fetch(`${env.base}/api/qa-executions`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(plan) });
+    expect(((await duplicate.json()) as any).execution.id).toBe(execution.id);
+    expect((await fetch(`${env.base}/api/qa-executions/${execution.id}/authorize`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ identity: 'simulated:test', planHash: 'plan-1' }) })).status).toBe(200);
+    const completed = await fetch(`${env.base}/api/qa-executions/${execution.id}/simulate`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ outcome: 'success' }) });
+    expect(((await completed.json()) as any).execution).toMatchObject({ state: 'completed', checkpoint: 'simulated:checkpoint', result: 'simulated:ok' });
+    expect((await fetch(`${env.base}/api/qa-executions/${execution.id}/cancel`, { method: 'POST', headers: JSON_HEADERS, body: '{}' })).status).toBe(400);
   });
 
   it('GET /api/stream envia retry, snapshot e feed; depois as mudanças', async () => {

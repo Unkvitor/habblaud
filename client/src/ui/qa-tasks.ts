@@ -58,19 +58,21 @@ export class QaTasksPanel {
   private async load(): Promise<void> {
     if (this.loading) return;
     this.loading = true; this.agents();
-    try { this.render((await request('/api/qa-tasks')).tasks ?? []); this.status.textContent = ''; }
+    try { const tasks=(await request('/api/qa-tasks')).tasks ?? []; const executions=((await request('/api/qa-executions') as any).executions ?? []); this.render(tasks, executions); this.status.textContent = ''; }
     catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao carregar tarefas.'); }
     finally { this.loading = false; }
   }
-  private render(tasks: QaTask[]): void {
+  private render(tasks: QaTask[], executions: any[] = []): void {
     this.list.replaceChildren(...tasks.map((task) => {
       const title = h('strong', { text: task.description });
       const state = h('p', { text: LABEL[task.status] + (task.status === 'awaiting_approval' ? ` · ${tr('requer decisão humana')}` : '') });
       const history = h('details', {}, h('summary', { text: tr('Histórico ({0})', [task.events.length]) }), h('ol', {}, ...task.events.map((event) => h('li', { text: `${new Date(event.at).toLocaleString()} · ${event.from ? `${LABEL[event.from]} → ` : ''}${LABEL[event.to]}` }))));
       const actions = h('div', { class: 'qa-tasks__actions' }, ...allowedQaTransitions(task.status).map((next) => h('button', { class: 'ui-btn ui-btn--sm', text: LABEL[next], on: { click: () => void this.transition(task.id, next) } })));
       const delegation = task.delegation ? h('p', { text: `${tr('Delegação')}: ${task.delegation.status === 'proposed' ? tr('aguardando aprovação humana') : task.delegation.status === 'approved' ? tr('aprovada para execução futura') : tr('rejeitada')}` }) : null;
+      const execution = executions.find((value) => value.taskId === task.id);
+      const simulation = execution ? h('div', { class: 'qa-tasks__simulation' }, h('p', { text: `${tr('Simulação')}: ${execution.state}${execution.checkpoint ? ` · ${execution.checkpoint}` : ''}${execution.result ? ` · ${execution.result}` : ''}${execution.error ? ` · ${execution.error}` : ''}` }), ...this.simulationControls(execution)) : h('button', { class: 'ui-btn ui-btn--sm', text: tr('Criar plano simulado'), on: { click: () => void this.plan(task) } });
       if (task.delegation?.status === 'proposed') actions.append(h('button', { class: 'ui-btn ui-btn--sm', text: tr('Aprovar delegação'), on: { click: () => void this.decision(task.id, 'approve') } }), h('button', { class: 'ui-btn ui-btn--sm', text: tr('Rejeitar delegação'), on: { click: () => void this.decision(task.id, 'reject') } }));
-      return h('li', { class: `qa-tasks__item is-${task.status}` }, title, state, delegation, actions, history);
+      return h('li', { class: `qa-tasks__item is-${task.status}` }, title, state, delegation, simulation, actions, history);
     }));
     if (!tasks.length) this.list.append(h('li', { text: tr('Nenhuma tarefa interna registrada.') }));
   }
@@ -89,4 +91,13 @@ export class QaTasksPanel {
     try { await request(`/api/qa-tasks/${encodeURIComponent(id)}/delegation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, decidedBy: 'human' }) }); await this.load(); }
     catch (error) { this.status.textContent = error instanceof Error ? error.message : tr('Falha ao decidir delegação.'); }
   }
+  private simulationControls(execution: any): HTMLElement[] {
+    const controls: HTMLElement[]=[];
+    if(execution.state==='awaiting_authorization') controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr('Autorizar simulação'),on:{click:()=>void this.execution(execution.id,'authorize',{identity:'simulated:local-ui',planHash:execution.planHash})}}));
+    if(execution.state==='ready') controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr('Executar simulação'),on:{click:()=>void this.execution(execution.id,'simulate',{outcome:'success'})}}));
+    if(['awaiting_authorization','ready','running'].includes(execution.state)) controls.push(h('button',{class:'ui-btn ui-btn--sm',text:tr('Cancelar simulação'),on:{click:()=>void this.execution(execution.id,'cancel',{})}}));
+    return controls;
+  }
+  private async plan(task: QaTask): Promise<void> { try { await request('/api/qa-executions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskId:task.id,executorId:task.assigneeId,threadId:`simulated:${task.assigneeId}`,idempotencyKey:`ui-${task.id}`,planHash:`simulated-plan-${task.id}`,identity:'simulated:local-ui'})});await this.load();}catch(error){this.status.textContent=error instanceof Error?error.message:tr('Falha ao criar plano simulado.');} }
+  private async execution(id:string,action:string,body:unknown):Promise<void>{try{await request(`/api/qa-executions/${encodeURIComponent(id)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});await this.load();}catch(error){this.status.textContent=error instanceof Error?error.message:tr('Falha na simulação.');}}
 }
