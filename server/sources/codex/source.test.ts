@@ -277,6 +277,9 @@ describe('fonte do Codex: presença pelos locks', () => {
     ctx.source.boot();
     expect(ctx.agent()?.name).toBe('Marcelo');
     expect(ctx.agent()?.status).toBe('idle');
+    ctx.advance(10_000);
+    ctx.poll();
+    expect(ctx.agent()?.status).toBe('idle');
   });
 
   it('thread antigo retomado agora (lock novo, rollout parado há dias) aparece', () => {

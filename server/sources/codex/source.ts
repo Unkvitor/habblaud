@@ -136,6 +136,8 @@ interface ThreadTracker {
   /** Resultados lidos antes de o agente entrar no escritório (vão como histórico, sem feed). */
   backlog: CodexLineResult[];
   inOffice: boolean;
+  /** Presença restaurada de identidade persistida sem lock; mantém-se ociosa até novo sinal. */
+  persistedPresence?: boolean;
   hookCwd?: string;
   hookRole?: string;
   status: AgentStatus;
@@ -356,7 +358,9 @@ export class CodexSource implements AgentSource, CodexLive {
     }
     // A reboot can leave only the coordination lock. Persisted identities still have a
     // valid rollout and must remain visible as idle without pretending a process is live.
-    for (const threadId of boot ? this.opts.office.persistedSessionIds() : []) {
+    for (const threadId of this.opts.office.persistedSessionIds()) {
+      const known = this.threads.get(`${acc.id}:${threadId}`);
+      if (!boot && !known?.persistedPresence) continue;
       if (out.has(threadId) || !isThreadId(threadId) || !acc.index.find(threadId)) continue;
       out.set(threadId, 'persisted');
     }
@@ -389,10 +393,11 @@ export class CodexSource implements AgentSource, CodexLive {
     if (t.inOffice && !this.opts.office.has(t.key)) t.inOffice = false; // saiu do escritório (graça encerrada)
     this.pump(t, boot);
     if (via === 'persisted') {
+      t.persistedPresence = true;
       t.status = 'idle';
       t.statusAt = now;
       delete t.waitingFor;
-    }
+    } else delete t.persistedPresence;
     this.reconcile(t, now, via);
     if (t.inOffice && t.kind === 'main') {
       this.quietCheck(t, now);
