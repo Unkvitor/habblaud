@@ -77,3 +77,11 @@ it('resolves a supervised turn only after the native completion event', async ()
   await expect(c.execute(id, 'tarefa pequena')).resolves.toMatchObject({ method: 'turn/completed', threadId: id });
   expect(calls).toEqual(['thread/read', 'thread/resume', 'turn/start']);
 });
+it('adopts an existing idle thread without creating a new session', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'habblaud-adopt-')); const id = '11111111-1111-4111-8111-111111111111';
+  const c = new ManagedCodex('not-executed', root, join(root, 'state.json'));
+  const managed: string[] = [];
+  (c as any).ready = Promise.resolve({ manage: (value: string) => managed.push(value), call: async (method: string) => method === 'thread/read' ? { thread: { id, cwd: root, status: { type: 'notLoaded' } } } : {} });
+  try { await c.adopt(id); expect(c.isManaged(id)).toBe(true); expect(managed).toEqual([id]); }
+  finally { rmSync(root, { recursive: true, force: true }); }
+});

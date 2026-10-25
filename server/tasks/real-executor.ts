@@ -11,6 +11,7 @@ export class RealCodexExecutor {
     if (!execution || execution.mode !== 'real' || execution.authorizationKind !== 'human' || execution.state !== 'ready') {
       throw new ExecutionError('invalid', 'execucao real nao autorizada');
     }
+    await this.codex.adopt(execution.threadId);
     this.queue.start(id);
     try {
       const result = await this.codex.execute(execution.threadId, execution.scope ?? '', (event) => this.progress(id, event));

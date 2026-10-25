@@ -93,6 +93,15 @@ export class ManagedCodex extends EventEmitter {
     if (!insideWorkspace(thread.cwd, this.workspace)) throw new Error(tr('Sessão fora do workspace permitido.'));
     return { p, thread };
   }
+  async adopt(id: string): Promise<void> {
+    if (!THREAD_ID.test(id)) throw new Error(tr('Id de sessão inválido.'));
+    const { p, thread } = await this.check(id);
+    if (thread.status?.type === 'active') throw new Error(tr('A sessão original está em execução.'));
+    this.managed.add(id); p.manage(id);
+    mkdirSync(dirname(this.stateFile), { recursive: true });
+    writeFileSync(this.stateFile + '.tmp', JSON.stringify([...this.managed]), { mode: 0o600 });
+    renameSync(this.stateFile + '.tmp', this.stateFile);
+  }
   async history(id: string, cursor?: string): Promise<Json> {
     const { p, thread } = await this.check(id);
     if (this.isManaged(id) && !thread.path) return { data: [], nextCursor: null };

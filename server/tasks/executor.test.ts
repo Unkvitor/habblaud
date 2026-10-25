@@ -29,7 +29,7 @@ describe('SupervisedExecutor', () => {
     const execution=q.enqueue({taskId:'task',executorId:'marcelo',threadId:'thread',idempotencyKey:'real-key',planHash:'real-plan',mode:'real',scope:'Leia apenas o arquivo README.md e informe o titulo.'} as any);
     expect(()=>q.authorize(execution.id,'simulated:test','real-plan')).toThrow(ExecutionError);
     q.authorizeHuman(execution.id,'human:local-ui','real-plan');
-    const transport={execute:async (_thread:string,_scope:string,onUpdate:(event:any)=>void)=>{onUpdate({method:'item/agentMessage/delta',text:'progresso'});return {method:'turn/completed',text:'resultado'};}};
+    const transport={adopt:async ()=>undefined,execute:async (_thread:string,_scope:string,onUpdate:(event:any)=>void)=>{onUpdate({method:'item/agentMessage/delta',text:'progresso'});return {method:'turn/completed',text:'resultado'};}};
     await new RealCodexExecutor(q,transport as any).run(execution.id);
     expect(q.list()[0]).toMatchObject({state:'completed',result:'resultado',checkpoint:'progresso',authorizationKind:'human'});
   });
